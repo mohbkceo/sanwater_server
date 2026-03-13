@@ -98,12 +98,14 @@ async function updateProduct(req, res) {
             tags,
             productVariants,
             gallery,
-            prices
+            prices,
+            name
         } = req.body;
 
         const product = await Product.findOneAndUpdate(
             { serialNumber },
             {family,
+                name,
                 tags,
                 gallery,
                 productVariants,

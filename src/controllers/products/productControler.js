@@ -51,11 +51,21 @@ async function createProduct(req, res) {
 
     }
 }
-
+const escapeRegex = str =>  str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 async function getProducts(req, res) {
     try {
+        const {search } = req.query;
         let query = {};
-        const products = await Product.find({});
+         if (typeof search === 'string' && search.trim() ) {
+                    const safe = escapeRegex(search)
+                    query.$or = [
+                        { name: { $regex: safe, $options: 'i' } },
+                        { family: { $regex: safe, $options: 'i' } },
+                        { productId: { $regex: safe, $options: 'i' } },
+                    ] 
+            }
+    
+        const products = await Product.find(query);
         return returnResponse(res, 200, 'Products found!', { products, count: products.length });
 
     } catch (error) {

@@ -34,7 +34,7 @@ function logTrafic(req, res, next){
   next();
 }
 
-const allowedOrigin = ['https://sanwater-dz.com/', "https://www.sanwater-dz.com/", "http://localhost:5173", "https://sanwaterfrontendproject.vercel.app"]
+const allowedOrigin = ['https://sanwater-dz.com/', "https://www.sanwater-dz.com", "http://localhost:5173", "https://sanwaterfrontendproject.vercel.app"]
 
 
 

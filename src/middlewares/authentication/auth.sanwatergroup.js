@@ -1,7 +1,7 @@
-const errHandler = require('./error.middleware')
-const {ERRORS} = require('../config/messages')
-const CostumeException = require('./CostumeException')
-const TokenServices = require('../services/tokenServices');
+const errHandler = require('../../utils/error.middleware')
+const {ERRORS} = require('../../config/messages')
+const CostumeException = require('../../utils/CostumeException')
+const TokenServices = require('../../services/tokenServices');
 
 
 
@@ -12,11 +12,12 @@ const authSanWater = async (req, res, next) => {
     const authAccessToken = req.cookies.mellisios_crsf_token;
     const verified = new TokenServices(authAccessToken)
     const decoded = await verified.verify();
+    console.log(decoded)
 
     if(decoded.type !== 'access') throw new CostumeException(ERRORS.INVALID.msg, ERRORS.INVALID.statusCode)
     if(decoded.role !== 'admin') throw new CostumeException(ERRORS.UNAUTHORIZED.msg, ERRORS.UNAUTHORIZED.statusCode)
     
-    req.user = decoded;
+    
     next();
   
   } catch (err) {

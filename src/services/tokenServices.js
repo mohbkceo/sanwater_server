@@ -1,7 +1,7 @@
 
 const jwt = require('jsonwebtoken');
 const {ERRORS} = require('../config/messages')
-const CostumeException = require('../middlewares/CostumeException')
+const CostumeException = require('../utils/CostumeException')
 
 
 

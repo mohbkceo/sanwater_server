@@ -19,6 +19,8 @@ app.use(express.urlencoded({ extended: true }));
 
 
 app.use(logTrafic);
+app.use('/analytics', require('./routes/analytics.routes'))
+app.use('/user', require('./routes/user.routes'))
 app.use('/products', require('./routes/product.routes'));
 app.use('/content', require('./routes/content.routes'))
 app.get('/', (_, res) => {

@@ -15,7 +15,7 @@
      const signOptions = {
          algorithm: 'RS256',
          expiresIn: options.expiresIn || '15m',
-         issuer: 'LogiX',
+         issuer: 'logix-issuer-system',
          audience: options.audience || 'logix-client',
          subject: payload.uid || 'unknown-user',
          keyid: PRIVATE_KEYS
@@ -25,9 +25,8 @@
  function generateAccessToken(user) {
      return signToken({
          uid: user._id?.toString() || user.uid,
-         username: user.username || "",
          email: user.email || "",
-         role: user.profile_meta?.role ?? 'user',
+         role: user?.role ?? 'user',
          type: 'access',
      }, {
          expiresIn: '15m',
@@ -38,11 +37,10 @@
      return signToken({
          uid: user._id.toString(),
          type: 'refresh',
-         role:user.profile_meta?.role,
-         username:user.username || "",
+         role:user?.role,
      }, {
          expiresIn: period || '30d',
-         audience: 'logix-app-refresh',
+         audience: 'sanwater-app-refresh',
      });
  }
  module.exports = {generateAccessToken, generateRefreshToken}

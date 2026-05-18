@@ -4,6 +4,7 @@ const Product = require('../../models/product.model');
 const generateSerialNumber = require('../../utils/serialNumberGenerator');
 const errorHandler = require('../../utils/error.middleware');
 const { returnResponse } = require('../../utils/responseHandler');
+const { default: mongoose } = require('mongoose');
 
 async function createProduct(req, res) {
     try {
@@ -51,29 +52,106 @@ async function createProduct(req, res) {
 
     }
 }
-const escapeRegex = str =>  str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const escapeRegex = (str = "") => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const toNumber = (value) => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : undefined;
+};
+
+const toBoolean = (value) => {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (value === true || value === "true" || value === "1") return true;
+  if (value === false || value === "false" || value === "0") return false;
+  return undefined;
+};
+
 async function getProducts(req, res) {
-    try {
-        const {search } = req.query;
-        let query = {};
-         if (typeof search === 'string' && search.trim() ) {
-                    const safe = escapeRegex(search)
-                    query.$or = [
-                        { name: { $regex: safe, $options: 'i' } },
-                        { family: { $regex: safe, $options: 'i' } },
-                        { productId: { $regex: safe, $options: 'i' } },
-                    ] 
-            }
-    
-        const products = await Product.find(query);
-        return returnResponse(res, 200, 'Products found!', { products, count: products.length });
+  try {
+    const {
+      search,
+      family,
+      minPrice,
+      maxPrice,
+      inStock,
+      max,
+      lastId,
+      sortBy,
+      sortOrder,
+    } = req.query;
 
-    } catch (error) {
+    const limit = Math.min(Number(max) || 15, 100);
 
-        errorHandler(res, error);
+    const query = {};
 
+    // Cursor pagination
+    if (lastId && mongoose.isValidObjectId(lastId)) {
+      query._id = { $lt: new mongoose.Types.ObjectId(lastId) };
     }
+
+    // Search
+    if (typeof search === "string" && search.trim()) {
+      const safe = escapeRegex(search.trim());
+      query.$or = [
+        { name: { $regex: safe, $options: "i" } },
+        { family: { $regex: safe, $options: "i" } },
+        { productId: { $regex: safe, $options: "i" } },
+      ];
+    }
+
+    // Family filter
+    if (typeof family === "string" && family.trim()) {
+      query.family = { $regex: escapeRegex(family.trim()), $options: "i" };
+    }
+
+    // Price range
+    const min = toNumber(minPrice);
+    const maxP = toNumber(maxPrice);
+
+    if (min !== undefined || maxP !== undefined) {
+      query.price = {};
+      if (min !== undefined) query.price.$gte = min;
+      if (maxP !== undefined) query.price.$lte = maxP;
+    }
+
+    // Stock filter
+    const stock = toBoolean(inStock);
+    if (stock === true) {
+      query.stock = { $gt: 0 };
+    } else if (stock === false) {
+      query.stock = { $lte: 0 };
+    }
+
+    // Controlled sorting
+    const allowedSortFields = new Set(["createdAt", "price", "name", "_id"]);
+    const safeSortBy = allowedSortFields.has(sortBy) ? sortBy : "createdAt";
+    const safeSortOrder = String(sortOrder).toLowerCase() === "asc" ? 1 : -1;
+
+    const sort = {};
+    sort[safeSortBy] = safeSortOrder;
+
+    // Stable tiebreaker
+    if (safeSortBy !== "_id") {
+      sort._id = -1;
+    }
+
+    const products = await Product.find(query)
+      .sort(sort)
+      .limit(limit)
+      .lean();
+
+    return returnResponse(res, 200, "Products found!", {
+      products,
+      count: products.length,
+      hasMore: products.length === limit,
+      nextLastId: products.length ? products[products.length - 1]._id : null,
+    });
+  } catch (error) {
+    errorHandler(res, error);
+  }
 }
+
 
 async function getProduct(req, res) {
 

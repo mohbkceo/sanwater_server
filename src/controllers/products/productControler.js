@@ -5,6 +5,7 @@ const generateSerialNumber = require('../../utils/serialNumberGenerator');
 const errorHandler = require('../../utils/error.middleware');
 const { returnResponse } = require('../../utils/responseHandler');
 const { default: mongoose } = require('mongoose');
+const { logActivity } = require('../../utils/logger');
 
 async function createProduct(req, res) {
     try {
@@ -43,6 +44,7 @@ async function createProduct(req, res) {
         });
 
         await product.save();
+        await logActivity(req, 'CREATE', 'Product', serialNumber, { name });
 
         return returnResponse(res, 201, 'Product succesfully created!', product);
 
@@ -205,6 +207,7 @@ async function updateProduct(req, res) {
             throw new CostumeExption(ERRORS.NOT_FOUND.key, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` })
         }
 
+        await logActivity(req, 'UPDATE', 'Product', serialNumber, { name });
         return returnResponse(res, 200, 'Product Updated!', product);
 
     } catch (error) {
@@ -228,6 +231,7 @@ async function deleteProduct(req, res) {
 
         }
 
+        await logActivity(req, 'DELETE', 'Product', serialNumber);
         return returnResponse(res, 200, 'Product Deleted!');
 
     } catch (error) {

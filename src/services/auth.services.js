@@ -4,6 +4,7 @@ const {ERRORS} = require('../config/messages')
 const User = require('../models/user.model')
 const UserService = require ("./user.services")
 const { generateAccessToken, generateRefreshToken } = require('../utils/generateComplexToken')
+const { logActivity } = require('../utils/logger')
 
 
 class AuthServices { 
@@ -22,16 +23,19 @@ class AuthServices {
         const isMatch = await bcrypt.compare(password, user.password);
         if(!isMatch) throw new CostumeExption(ERRORS.UNAUTHORIZED.msg, ERRORS.UNAUTHORIZED.statusCode)
         
+        // Note: logActivity needs req, but AuthServices is a class. 
+        // We'll log in the controller instead for auth events to avoid passing req everywhere.
+        
         const refreshToken = await generateRefreshToken(user)
         return {
             refreshToken,
             result:{
                 user:{
-                username:user.username,
+                username:user.fullName,
                 email:user.email,
                 fullName:user.fullName,
                 uid:user._id,
-                role:user.profile_meta?.role
+                role:user.role
             }}
             }
     }

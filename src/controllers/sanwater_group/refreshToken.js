@@ -22,8 +22,8 @@ async function refreshTokenValidation(req, res) {
     }
     const newAccessToken = generateAccessToken({
       uid: decoded.uid,
-      role:decoded.role,
-      username:decoded.username
+      role: decoded.role,
+      username: decoded.fullName || decoded.username
     });
 
     res.cookie('mellisios_crsf_token', newAccessToken, {

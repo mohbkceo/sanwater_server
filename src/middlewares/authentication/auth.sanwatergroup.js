@@ -15,7 +15,14 @@ const authSanWater = async (req, res, next) => {
     console.log(decoded)
 
     if(decoded.type !== 'access') throw new CostumeException(ERRORS.INVALID.msg, ERRORS.INVALID.statusCode)
-    if(decoded.role !== 'admin') throw new CostumeException(ERRORS.UNAUTHORIZED.msg, ERRORS.UNAUTHORIZED.statusCode)
+    const roles = ['super_admin', 'admin', 'manager'];
+    const requiredRole = 'manager'; // Default minimum role for protected routes
+    
+    if (!roles.includes(decoded.role)) {
+      throw new CostumeException(ERRORS.UNAUTHORIZED.msg, ERRORS.UNAUTHORIZED.statusCode);
+    }
+    
+    req.user = decoded;
     
     
     next();

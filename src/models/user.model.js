@@ -5,7 +5,12 @@
       fullName: { type: String, required: true, trim: true, minlength: 2, maxlength: 100},
       email: { type: String, unique: true, required: true, lowercase: true, match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'] },
       password:  { type: String, required: true,  select: false},
-      role: {type: String, default: 'manager'},
+      role: {type: String, required:true, default: 'manager'},
+      createdWith: {
+        name: { type: String, default: null },
+        at: { type: Date }
+      },
+      authKey: { type: String, default:null },
       phone: { type: String, default: null },
       profileImage: { type: String },
     }, { timestamps: true });

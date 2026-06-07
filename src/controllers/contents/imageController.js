@@ -1,6 +1,7 @@
+const { SUCCESS } = require('../../config/messages');
 const CostumeExption = require('../../utils/CostumeException');
 const errorHandler = require('../../utils/error.middleware');
-const { returnResponse } = require('../../utils/responseHandler');
+const returnResponse  = require('../../utils/responseHandler');
 
 const cloudinaryv2 = require('cloudinary').v2
 async function uploadImage(req, res) {
@@ -11,7 +12,7 @@ async function uploadImage(req, res) {
            throw new CostumeExption(ERRORS.NOT_FOUND.key, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `image_path_not_found` })
         }
 
-        return returnResponse(res, 200, `Image uploaded`, {path})
+        return returnResponse(res, SUCCESS.RESOURCES_UPDATED, {path})
     } catch (error) {
         errorHandler(res, error)
     }

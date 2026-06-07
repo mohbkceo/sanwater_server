@@ -1,5 +1,4 @@
 
-
-export const returnResponse = async (res, statusCode, message, data) => {
-    return res.status(statusCode).json({ success: true, message, data });
+module.exports = async (res, respondObject, data) => {
+    return res.status(respondObject?.statusCode).json({ success: true, message:respondObject?.msg, data });
 }

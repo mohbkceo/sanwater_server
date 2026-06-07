@@ -3,7 +3,7 @@ const CostumeExption = require('../../utils/CostumeException');
 const Product = require('../../models/product.model');
 const generateSerialNumber = require('../../utils/serialNumberGenerator');
 const errorHandler = require('../../utils/error.middleware');
-const { returnResponse } = require('../../utils/responseHandler');
+const  returnResponse  = require('../../utils/responseHandler');
 const { default: mongoose } = require('mongoose');
 const { logActivity } = require('../../utils/logger');
 
@@ -46,7 +46,7 @@ async function createProduct(req, res) {
         await product.save();
         await logActivity(req, 'CREATE', 'Product', serialNumber, { name });
 
-        return returnResponse(res, 201, 'Product succesfully created!', product);
+        return returnResponse(res, SUCCESS.RESOURCES_CREATED, product);
 
     } catch (error) {
 
@@ -143,7 +143,7 @@ async function getProducts(req, res) {
       .limit(limit)
       .lean();
 
-    return returnResponse(res, 200, "Products found!", {
+    return returnResponse(res, SUCCESS.RESOURCES_FOUND, {
       products,
       count: products.length,
       hasMore: products.length === limit,
@@ -167,7 +167,7 @@ async function getProduct(req, res) {
            throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` });
         }
 
-        return returnResponse(res, 200, SUCCESS.RESOURCES_FOUND.msg, product)
+        return returnResponse(res, SUCCESS.RESOURCES_UPDATED, product)
 
     } catch (error) {
 
@@ -208,7 +208,7 @@ async function updateProduct(req, res) {
         }
 
         await logActivity(req, 'UPDATE', 'Product', serialNumber, { name });
-        return returnResponse(res, 200, 'Product Updated!', product);
+        return returnResponse(res, SUCCESS.RESOURCES_UPDATED, product);
 
     } catch (error) {
 
@@ -232,7 +232,7 @@ async function deleteProduct(req, res) {
         }
 
         await logActivity(req, 'DELETE', 'Product', serialNumber);
-        return returnResponse(res, 200, 'Product Deleted!');
+        return returnResponse(res, SUCCESS.RESOURCES_DELETED);
 
     } catch (error) {
 

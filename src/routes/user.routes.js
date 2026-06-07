@@ -5,7 +5,7 @@ const router = express.Router();
 const { authSanWater, authorize } = require('../middlewares');
 const { signIn, register, logout, refreshTokenValidation } = require('../controllers');
 const User = require('../models/user.model');
-const responseHandler = require('../utils/responseHandler');
+const returnResponse  = require('../utils/responseHandler');
 const { SUCCESS } = require('../config/messages');
 
 
@@ -18,7 +18,7 @@ router.get('/auth/getaccesstoken/v1', refreshTokenValidation);
 router.get('/', authSanWater, authorize('admin'), async (req, res, next) => {
   try {
     const users = await User.find().select('-password');
-    responseHandler(res, SUCCESS.RESOURCES_FOUND, users);
+    return returnResponse(res, SUCCESS.RESOURCES_FOUND , users);
   } catch (err) {
     next(err);
   }

@@ -37,10 +37,6 @@ class UserService {
   
   }
 
-  
-
- 
-
   async updateField(username, field, fieldName) {
     if(!username || !field || !fieldName) { 
       throw new CostumeExption(ERRORS.REQUIRED.msg, ERRORS.REQUIRED.statusCode);
@@ -54,6 +50,28 @@ class UserService {
     return {
      ...update._doc?.[fieldName]?._doc
     };
+  }
+
+  async getUsers(filter){
+    const users = await User.find(filter);
+    if(!users) throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, {
+      message: 'Users not found or an error happend'
+    })
+
+    return users;
+  }
+
+  async deleteUserById(userId) {
+    if(!userId) throw new CostumeExption(ERRORS.REQUIRED.msg, ERRORS.REQUIRED.statusCode, ERRORS.REQUIRED.key, {
+      message: '_id is required to take this action'
+    })
+    const deletedUser = await User.deleteOne({id:userId});
+    
+    if(!deletedUser) throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, {
+      message: 'User not found or an error happend'
+    })
+    
+    return deletedUser;
   }
 }
 

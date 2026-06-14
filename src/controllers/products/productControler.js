@@ -77,22 +77,22 @@ async function getProducts(req, res) {
       minPrice,
       maxPrice,
       inStock,
+      isAdmin,
       max,
       lastId,
       sortBy,
       sortOrder,
     } = req.query;
 
-    const limit = Math.min(Number(max) || 15, 100);
+    const limit = isAdmin ? 1000 : Math.min(Number(max) || 15, 100);
 
     const query = {};
 
-    // Cursor pagination
     if (lastId && mongoose.isValidObjectId(lastId)) {
       query._id = { $lt: new mongoose.Types.ObjectId(lastId) };
     }
 
-    // Search
+    
     if (typeof search === "string" && search.trim()) {
       const safe = escapeRegex(search.trim());
       query.$or = [

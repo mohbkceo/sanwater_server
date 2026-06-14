@@ -29,10 +29,12 @@ const jwt = require('jsonwebtoken');
     async function register(req, res, next) {
         try {
             const { userData } = req.body;
+            
 
             const data = await AuthServices.Register(
                 userData,
                 userData.email,
+                userData?.authKey
             );
 
             

@@ -5,6 +5,7 @@ const imageHandler = require('../controllers/contents/imageController');
 const hiringController = require('../controllers/contents/hiringController');
 const contactController = require('../controllers/contents/contactController');
 const { authSanWater, authorize } = require('../middlewares');
+const { getPageContent, updatePageContent } = require('../controllers');
 
 
 router.post('/upload/image/v1', authSanWater, upload.single('image'), imageHandler.uploadImage)
@@ -22,4 +23,8 @@ router.post('/contact', contactController.submitContactForm);
 router.get('/contact/submissions', authSanWater, authorize('admin'), contactController.getSubmissions);
 router.put('/contact/submissions/:id', authSanWater, authorize('admin'), contactController.updateSubmissionStatus);
 
+
+// PAge content
+router.get('/page_content/:slug', getPageContent);
+router.put('/page_content/:slug', authSanWater, updatePageContent);
 module.exports = router

@@ -12,7 +12,7 @@ const storage = new CloudinaryStorage({
     cloudinary,
     params: (req, file) => {
         let folder = req?.query?.folder || 'productsImage';
-        let transformation = req?.body?.transformation ?? [{ width: 300, height: 300, crop: 'fill' }];
+        let transformation = req?.body?.transformation ?? [{ width: 1080, height: 1080, crop: 'fill' }];
          
         return {
             folder: folder,

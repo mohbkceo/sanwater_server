@@ -35,11 +35,12 @@ class AuthServices {
                 email:user.email,
                 fullName:user.fullName,
                 uid:user._id,
-                role:user.role
+                role:user.role,
+                authKey: user?.authKey
             }}
             }
     }
-    async Register(userData, email){
+    async Register(userData, email, authKey){
        
         const existing = await User.findOne({ email })
        
@@ -47,7 +48,21 @@ class AuthServices {
           throw new CostumeExption(ERRORS.DUPLICATE.msg, ERRORS.DUPLICATE.statusCode)
         }
             
+
         
+
+        const isAuthorizedKeyValid = await User.findOne({ $or: [
+            {
+               _id:authKey
+            },
+            {
+                authKey:authKey
+            }
+        ] })
+
+        if(!isAuthorizedKeyValid) throw new CostumeExption(ERRORS.UNAUTHORIZED.msg, ERRORS.UNAUTHORIZED.statusCode, ERRORS.UNAUTHORIZED.key, {
+            message: 'authKey is not valid'
+        })
         const user = await UserService.creatUser(userData);
 
         if(!user) {
@@ -55,6 +70,9 @@ class AuthServices {
                 message: 'faild_to_create_user'
             })
         }
+
+
+
         const token = await generateAccessToken(user)
         const refreshToken = await generateRefreshToken(user);
         return {
@@ -64,7 +82,9 @@ class AuthServices {
                 user:{
                     email:user.email,
                     fullName:user.fullName,
-                    uid:user._id
+                    uid:user._id,
+                    authKey:user?.authKey,
+                    role:user?.role
                 }
             }
         }

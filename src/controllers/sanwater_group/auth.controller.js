@@ -37,7 +37,7 @@ const jwt = require('jsonwebtoken');
                 userData?.authKey
             );
 
-            
+            console.log(data);
             res.cookie('refreshToken', data.refreshToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',

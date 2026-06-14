@@ -7,13 +7,15 @@ const roleHierarchy = {
   'manager': 1
 };
 
-const authorize = (minRole) => {
+const authorize = (minRole, isAction=false) => {
   return (req, res, next) => {
     const userRole = req.user.role;
     
-    if (!roleHierarchy[userRole] || roleHierarchy[userRole] < roleHierarchy[minRole]) {
-      return next(new CostumeException(ERRORS.UNAUTHORIZED.msg, ERRORS.UNAUTHORIZED.statusCode));
+    if (!roleHierarchy[userRole] || roleHierarchy[userRole] < roleHierarchy[minRole] ) {
+      throw new CostumeException(ERRORS.UNAUTHORIZED.msg, ERRORS.UNAUTHORIZED.statusCode);
     }
+
+   
     
     next();
   };

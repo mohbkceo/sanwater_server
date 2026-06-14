@@ -71,7 +71,7 @@ class AuthServices {
             })
         }
 
-
+        
 
         const token = await generateAccessToken(user)
         const refreshToken = await generateRefreshToken(user);

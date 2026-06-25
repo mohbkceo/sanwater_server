@@ -1,7 +1,7 @@
  const jwt = require('jsonwebtoken');
  const crypto = require('crypto');
 
- const PRIVATE_KEYS = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');;
+ const PRIVATE_KEYS = (process.env.PRIVATE_KEY || '').replace(/\\n/g, '\n');;
    
  
 

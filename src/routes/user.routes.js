@@ -25,6 +25,13 @@ router.get('/', authSanWater, authorize('admin'), async (req, res, next) => {
 });
 
 const { logActivity } = require('../utils/logger');
+const { getUserProfile, updateBasicInfo, changePassword, getSecurityInfo } = require('../controllers/users/userController');
+
+// User profile management routes
+router.get('/profile/me', authSanWater, getUserProfile);
+router.get('/security/me', authSanWater, getSecurityInfo);
+router.put('/profile/basic', authSanWater, updateBasicInfo);
+router.put('/security/password', authSanWater, changePassword);
 
 router.put('/:id/role', authSanWater, authorize('super_admin', true), async (req, res, next) => {
   try {

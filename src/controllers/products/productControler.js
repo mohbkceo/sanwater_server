@@ -88,6 +88,11 @@ async function getProducts(req, res) {
 
     const query = {};
 
+    // Filter by isActive for non-admin users
+    if (!isAdmin) {
+      query.isActive = true;
+    }
+
     if (lastId && mongoose.isValidObjectId(lastId)) {
       query._id = { $lt: new mongoose.Types.ObjectId(lastId) };
     }
@@ -160,8 +165,15 @@ async function getProduct(req, res) {
     try {
 
         const { serialNumber } = req.params;
+        const { isAdmin } = req.query;
 
-        const product = await Product.findOne({ serialNumber });
+        const query = { serialNumber };
+        // Filter by isActive for non-admin users
+        if (!isAdmin) {
+          query.isActive = true;
+        }
+
+        const product = await Product.findOne(query);
 
         if (!product) {
            throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` });
@@ -189,25 +201,35 @@ async function updateProduct(req, res) {
             productVariants,
             gallery,
             prices,
-            name
+            name,
+            isActive
         } = req.body;
+
+        const updateData = {
+            family,
+            name,
+            tags,
+            gallery,
+            productVariants,
+            prices
+        };
+
+        // Allow updating isActive field
+        if (isActive !== undefined) {
+            updateData.isActive = isActive;
+        }
 
         const product = await Product.findOneAndUpdate(
             { serialNumber },
-            {family,
-                name,
-                tags,
-                gallery,
-                productVariants,
-                prices },
+            updateData,
             { new: true }
         );
 
         if (!product) {
-            throw new CostumeExption(ERRORS.NOT_FOUND.key, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` })
+            throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` })
         }
 
-        await logActivity(req, 'UPDATE', 'Product', serialNumber, { name });
+        await logActivity(req, 'UPDATE', 'Product', serialNumber, { name, isActive: product.isActive });
         return returnResponse(res, SUCCESS.RESOURCES_UPDATED, product);
 
     } catch (error) {
@@ -227,7 +249,7 @@ async function deleteProduct(req, res) {
         const product = await Product.findOneAndDelete({ serialNumber });
 
         if (!product) {
-         throw new CostumeExption(ERRORS.NOT_FOUND.key, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` })
+         throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` })
 
         }
 

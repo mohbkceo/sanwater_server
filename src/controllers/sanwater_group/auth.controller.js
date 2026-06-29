@@ -15,6 +15,12 @@ const jwt = require('jsonwebtoken');
                 sameSite: 'strict',
                 maxAge: 7 * 24 * 60 * 60 * 1000 
             });
+            res.cookie('mellisios_crsf_token', data.accessToken, {
+                    httpOnly: true,
+                    secure: true,
+                    sameSite:'none', 
+                    maxAge: 15 * 60 * 1000
+            });
 
             return res.status(200).json({
                 success: true,
@@ -37,12 +43,17 @@ const jwt = require('jsonwebtoken');
                 userData?.authKey
             );
 
-            console.log(data);
             res.cookie('refreshToken', data.refreshToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
                 sameSite: 'strict',
                 maxAge: 7 * 24 * 60 * 60 * 1000
+            });
+            res.cookie('mellisios_crsf_token', data.token, {
+                    httpOnly: true,
+                    secure: true,
+                    sameSite:'none', 
+                    maxAge: 15 * 60 * 1000
             });
 
             return res.status(201).json({

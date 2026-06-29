@@ -27,8 +27,10 @@ class AuthServices {
         // We'll log in the controller instead for auth events to avoid passing req everywhere.
         
         const refreshToken = await generateRefreshToken(user)
+        const accessToken = await generateAccessToken(user)
         return {
             refreshToken,
+            accessToken,
             result:{
                 user:{
                 username:user.fullName,

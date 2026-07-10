@@ -88,9 +88,10 @@ async function getProducts(req, res) {
 
     const query = {};
 
-    // Filter by isActive for non-admin users
+    
     if (!isAdmin) {
       query.isActive = true;
+      query.isEcommerce = null;
     }
 
     if (lastId && mongoose.isValidObjectId(lastId)) {
@@ -168,9 +169,10 @@ async function getProduct(req, res) {
         const { isAdmin } = req.query;
 
         const query = { serialNumber };
-        // Filter by isActive for non-admin users
+        
         if (!isAdmin) {
           query.isActive = true;
+          
         }
 
         const product = await Product.findOne(query);

@@ -18,6 +18,7 @@ const productSchema = new mongoose.Schema({
     family: {type: String, default: "NO-FAMILLY"},
     serialNumber: {type: String, unique: true, required: true},
     isActive: {type: Boolean, default: true},
+    isEcommerce : { type: Boolean, default: false },
     tags: { type: [String], default: [] },
     gallery: { type: [String], default: [] },
     productVariants: {

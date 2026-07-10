@@ -6,6 +6,7 @@ const hiringController = require('../controllers/contents/hiringController');
 const contactController = require('../controllers/contents/contactController');
 const { authSanWater, authorize } = require('../middlewares');
 const { getPageContent, updatePageContent } = require('../controllers');
+const { placeOrder, getOrders, getOrderById, deleteOrder, setOrderStatus } = require('../controllers/products/orderController');
 
 
 router.post('/upload/image/v1', authSanWater, upload.single('image'), imageHandler.uploadImage)
@@ -24,7 +25,13 @@ router.get('/contact/submissions', authSanWater, authorize('admin'), contactCont
 router.put('/contact/submissions/:id', authSanWater, authorize('admin'), contactController.updateSubmissionStatus);
 
 
-// PAge content
+// Psge content
 router.get('/page_content/:slug', getPageContent);
 router.put('/page_content/:slug', authSanWater, updatePageContent);
+
+router.post("/order/place", placeOrder);
+router.get("/orders", getOrders);
+router.get("/order/:id", getOrderById);
+router.delete("/order/:id", deleteOrder);
+router.patch("/order/:id/status", setOrderStatus);
 module.exports = router

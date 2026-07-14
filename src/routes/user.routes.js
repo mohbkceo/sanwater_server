@@ -6,7 +6,7 @@ const { authSanWater, authorize } = require('../middlewares');
 const { signIn, register, logout, refreshTokenValidation } = require('../controllers');
 const User = require('../models/user.model');
 const returnResponse  = require('../utils/responseHandler');
-const { SUCCESS } = require('../config/messages');
+const { SUCCESS, ERRORS } = require('../config/messages');
 
 
 router.post('/auth/register', register);
@@ -26,6 +26,7 @@ router.get('/', authSanWater, authorize('admin'), async (req, res, next) => {
 
 const { logActivity } = require('../utils/logger');
 const { getUserProfile, updateBasicInfo, changePassword, getSecurityInfo } = require('../controllers/users/userController');
+const CostumeExption = require('../utils/CostumeException');
 
 // User profile management routes
 router.get('/profile/me', authSanWater, getUserProfile);
@@ -36,7 +37,29 @@ router.put('/security/password', authSanWater, changePassword);
 router.put('/:id/role', authSanWater, authorize('super_admin', true), async (req, res, next) => {
   try {
     const { role } = req.body;
-    const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true }).select('-password');
+    const { id } = req.params;
+    const { uid } = req.user;
+
+    if(uid === id){
+      throw new CostumeExption(ERRORS.UNAUTHORIZED?.msg, ERRORS.UNAUTHORIZED.statusCode, ERRORS.UNAUTHORIZED.key, {
+        message: 'The user can not delete itself'
+      });
+    }
+    
+    const user = await User.findById(id);
+    
+    if (!user) {
+      throw new CostumeExption(
+        ERRORS.NOT_FOUND.msg,
+        ERRORS.NOT_FOUND.statusCode,
+        ERRORS.NOT_FOUND.key,
+        {
+          message: 'User not found'
+        }
+      );
+    }
+    
+    await user.updateOne({ role }, {new: true}).select('-password');
     await logActivity(req, 'ROLE_CHANGE', 'User', user._id, { newRole: role, userEmail: user.email });
     returnResponse(res, SUCCESS.RESOURCES_UPDATED, user);
   } catch (err) {
@@ -47,7 +70,31 @@ router.put('/:id/role', authSanWater, authorize('super_admin', true), async (req
 router.delete('/:id', authSanWater, authorize('super_admin', true), async (req, res, next) => {
   try {
     const { uid, email } = req.user;
-     const user = await User.findByIdAndDelete(req.params.id);
+    const { id } = req.params
+    if(uid === id){
+      throw new CostumeExption(ERRORS.UNAUTHORIZED?.msg, ERRORS.UNAUTHORIZED.statusCode, ERRORS.UNAUTHORIZED.key, {
+        message: 'The user can not delete itself'
+      });
+    }
+    
+    const user = await User.findById(id);
+    if (!user) {
+      throw new CostumeExption(
+        ERRORS.NOT_FOUND.msg,
+        ERRORS.NOT_FOUND.statusCode,
+        ERRORS.NOT_FOUND.key,
+        {
+          message: 'User not found'
+        }
+      );
+    }
+    if(user?.role === 'super_admin'){
+    
+      throw new CostumeExption(ERRORS.UNAUTHORIZED?.msg, ERRORS.UNAUTHORIZED.statusCode, ERRORS.UNAUTHORIZED.key, {
+        message: 'Super admin cannot be delted'
+      });
+    }
+    await user.deleteOne()
     await logActivity(req, 'DELETE', 'User', user._id, { responsible: uid, responsibleEmail: email });
     returnResponse(res, SUCCESS.RESOURCES_DELETED);
   } catch (err) {

@@ -79,6 +79,7 @@ async function getProducts(req, res) {
       inStock,
       isAdmin,
       max,
+      isEcommerce,
       lastId,
       sortBy,
       sortOrder,
@@ -92,6 +93,10 @@ async function getProducts(req, res) {
     if (!isAdmin) {
       query.isActive = true;
       query.isEcommerce = null;
+    }
+
+    if(isEcommerce && typeof isEcommerce === 'string'){
+      query.isEcommerce = true
     }
 
     if (lastId && mongoose.isValidObjectId(lastId)) {
@@ -143,6 +148,8 @@ async function getProducts(req, res) {
     if (safeSortBy !== "_id") {
       sort._id = -1;
     }
+
+    console.log(query)
 
     const products = await Product.find(query)
       .sort(sort)

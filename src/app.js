@@ -29,4 +29,11 @@ app.get('/', (_, res) => {
 })
 app.use(require('./middlewares/notFound'))
 
+// Global error handler: ensures thrown CostumeExceptions (e.g. permission errors)
+// are returned with their proper status codes instead of crashing the process.
+const errorHandler = require('./utils/error.middleware');
+app.use((err, req, res, next) => {
+    errorHandler(res, err);
+});
+
 module.exports = app;

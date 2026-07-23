@@ -4,6 +4,7 @@ const ERRORS = {
     DUPLICATE: { key: 'DUPLICATE', msg: 'Resource already exists', statusCode: 409 },
     INVALID: { key: 'INVALID', msg: 'Resource Invalid', statusCode: 422 },
     UNAUTHORIZED: { key: 'UNAUTHORIZED', msg: 'Unauthorized Access', statusCode: 401 },
+    FORBIDDEN: { key: 'FORBIDDEN', msg: 'You do not have permission', statusCode: 403 },
     CONFLICT : {key: 'CONFLICT', msg: 'Conflict Resources', statusCode: 409},
     SERVER_ERROR : {key: 'SERVER_ERROR', msg: 'Somthing went wrong on the server', statusCode: 500},
   };

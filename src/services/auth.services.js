@@ -38,6 +38,7 @@ class AuthServices {
                 fullName:user.fullName,
                 uid:user._id,
                 role:user.role,
+                permissions: user.permissions || [],
                 authKey: user?.authKey
             }}
             }
@@ -86,7 +87,8 @@ class AuthServices {
                     fullName:user.fullName,
                     uid:user._id,
                     authKey:user?.authKey,
-                    role:user?.role
+                    role:user?.role,
+                    permissions: user.permissions || []
                 }
             }
         }

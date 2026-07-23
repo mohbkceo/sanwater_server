@@ -23,6 +23,7 @@ async function refreshTokenValidation(req, res) {
     const newAccessToken = generateAccessToken({
       uid: decoded.uid,
       role: decoded.role,
+      permissions: decoded.permissions || [],
       username: decoded.fullName || decoded.username
     });
 

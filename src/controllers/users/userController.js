@@ -35,6 +35,7 @@ async function getUserProfile(req, res) {
       },
       securityInfo: {
         role: user.role,
+        permissions: user.permissions || [],
         createdWith: user.createdWith || null,
         authKey: user.authKey || null,
         hasPassword: !!user.password,
@@ -202,6 +203,7 @@ async function getSecurityInfo(req, res) {
 
     const securityInfo = {
       role: user.role,
+      permissions: user.permissions || [],
       createdWith: user.createdWith || null,
       authKey: user.authKey || null,
       hasPassword: !!user.password,

@@ -2,6 +2,13 @@ const News = require('../../models/news.model');
 const returnResponse = require('../../utils/responseHandler');
 const { SUCCESS } = require('../../config/messages');
 const { logActivity } = require('../../utils/logger');
+const { PERMISSIONS, ROLES } = require('../../config/permissions');
+
+const canViewUnpublished = (user) => {
+    if (!user) return false;
+    if (user.role === ROLES.SUPER_ADMIN) return true;
+    return (user.permissions || []).includes(PERMISSIONS.CONTENT.VIEW);
+};
 
 const createNews = async (req, res, next) => {
     try {
@@ -20,7 +27,7 @@ const getAllNews = async (req, res, next) => {
         const query = {};
 
         // For public access, only show published news (and scheduled that reached their time)
-        const isAdmin = req.user && req.user.role === 'admin';
+        const isAdmin = canViewUnpublished(req.user);
         if (!isAdmin) {
             query.$or = [
                 { status: 'published' },
@@ -62,7 +69,7 @@ const getNewsBySlug = async (req, res, next) => {
         const query = { slug };
 
         // For public access, only show published/scheduled news
-        const isAdmin = req.user && req.user.role === 'admin';
+        const isAdmin = canViewUnpublished(req.user);
         if (!isAdmin) {
             query.$or = [
                 { status: 'published' },

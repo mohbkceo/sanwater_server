@@ -19,7 +19,9 @@ class UserService {
         const userSchema = {
             fullName: true,
             phone: true,
-            email: true
+            email: true,
+            role: true,
+            permissions: true
         }
         let hashedPassword = await hashPassword(userData?.password);
         let costmizedUser = {};

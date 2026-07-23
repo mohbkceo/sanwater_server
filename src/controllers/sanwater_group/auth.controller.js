@@ -35,12 +35,15 @@ const jwt = require('jsonwebtoken');
     async function register(req, res, next) {
         try {
             const { userData } = req.body;
-            
+
+            // Security: self-registration can never set role or permissions.
+            // New accounts are always plain admins with no permissions.
+            const sanitizedUserData = { ...userData, role: 'admin', permissions: [] };
 
             const data = await AuthServices.Register(
-                userData,
-                userData.email,
-                userData?.authKey
+                sanitizedUserData,
+                sanitizedUserData.email,
+                sanitizedUserData?.authKey
             );
 
             res.cookie('refreshToken', data.refreshToken, {
@@ -69,6 +72,7 @@ const jwt = require('jsonwebtoken');
     async function logout(req, res, next) {
         try {
             res.clearCookie('refreshToken');
+            res.clearCookie('mellisios_crsf_token');
 
             return res.status(200).json({
                 success: true,

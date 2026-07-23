@@ -27,6 +27,7 @@
          uid: user._id?.toString() || user.uid,
          email: user.email || "",
          role: user?.role ?? 'user',
+         permissions: user?.permissions || [],
          type: 'access',
      }, {
          expiresIn: '15m',
@@ -37,7 +38,8 @@
      return signToken({
          uid: user._id.toString(),
          type: 'refresh',
-         role:user?.role,
+         role: user?.role,
+         permissions: user?.permissions || [],
      }, {
          expiresIn: period || '30d',
          audience: 'sanwater-app-refresh',

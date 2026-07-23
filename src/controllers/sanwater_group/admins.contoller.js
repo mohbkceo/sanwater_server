@@ -10,7 +10,6 @@ async function fetchAdmins(req, res){
     try {
         const { role } = req.query;
         const filter = { $or: [
-            { role: 'manager' },
             { role: 'admin'   },
             { role: 'super_admin' },
         ]}
@@ -22,8 +21,8 @@ async function fetchAdmins(req, res){
 }
 
 const managingPermessions = {
-    super_admin: ['admin', 'manager'],
-    admin: ['manager']
+    super_admin: ['admin'],
+    admin: []
 }
 async function deleteAdmins(req, res){
     try {

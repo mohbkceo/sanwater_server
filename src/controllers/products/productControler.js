@@ -159,12 +159,8 @@ async function getProduct(req, res) {
 
     const query = { serialNumber };
 
-    if (!isAdmin) {
-      query.isActive = true;
-    }
-
     const product = await Product.findOne(query);
-
+    console.log(product);
     if (!product) {
       throw new CostumeExption(
         ERRORS.NOT_FOUND.msg,
@@ -183,8 +179,16 @@ async function getProduct(req, res) {
 async function updateProduct(req, res) {
   try {
     const { serialNumber } = req.params;
-    const { family, tags, productVariants, gallery, prices, name, isActive } =
-      req.body;
+    const {
+      family,
+      tags,
+      productVariants,
+      gallery,
+      prices,
+      isEcommerce,
+      name,
+      isActive,
+    } = req.body;
 
     const updateData = {
       family,
@@ -193,6 +197,7 @@ async function updateProduct(req, res) {
       gallery,
       productVariants,
       prices,
+      isEcommerce,
     };
 
     // Allow updating isActive field

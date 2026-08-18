@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
-    "migrate:permissions": "node src/scripts/migrate-roles-to-permissions.js"
+    "migrate:permissions": "node src/scripts/migrate-roles-to-permissions.js",
+    "migrate:catalog": "node src/scripts/migrate-product-catalog.js"
   },
   "keywords": [],
   "author": "",

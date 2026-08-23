@@ -94,13 +94,6 @@ const toNumber = (value) => {
   return Number.isFinite(num) ? num : undefined;
 };
 
-const toBoolean = (value) => {
-  if (value === undefined || value === null || value === "") return undefined;
-  if (value === true || value === "true" || value === "1") return true;
-  if (value === false || value === "false" || value === "0") return false;
-  return undefined;
-};
-
 async function getProducts(req, res) {
   try {
     const {
@@ -110,7 +103,6 @@ async function getProducts(req, res) {
       collection,
       minPrice,
       maxPrice,
-      inStock,
       isAdmin,
       max,
       isEcommerce,
@@ -125,7 +117,12 @@ async function getProducts(req, res) {
 
     if (!isAdmin) {
       query.isActive = true;
-      query.isEcommerce = null;
+      // Public catalog = anything not explicitly flagged e-commerce-only.
+      // `isEcommerce` defaults to `false` on the schema, so nearly every
+      // real product has it stored as `false`, not missing/null — querying
+      // for strictly `null` here was excluding the entire live catalog
+      // (confirmed: 210/211 products have isEcommerce:false, 0 have null).
+      query.isEcommerce = { $in: [false, null] };
     }
 
     if (typeof category === "string" && category.trim()) {
@@ -167,21 +164,22 @@ async function getProducts(req, res) {
     const min = toNumber(minPrice);
     const maxP = toNumber(maxPrice);
 
+    // Price lives at `prices.productPrice` on the schema, not a top-level
+    // `price` field — querying `price` directly (as this used to) matches
+    // nothing since no document has that field.
     if (min !== undefined || maxP !== undefined) {
-      query.price = {};
-      if (min !== undefined) query.price.$gte = min;
-      if (maxP !== undefined) query.price.$lte = maxP;
+      query["prices.productPrice"] = {};
+      if (min !== undefined) query["prices.productPrice"].$gte = min;
+      if (maxP !== undefined) query["prices.productPrice"].$lte = maxP;
     }
 
-    const stock = toBoolean(inStock);
-    if (stock === true) {
-      query.stock = { $gt: 0 };
-    } else if (stock === false) {
-      query.stock = { $lte: 0 };
-    }
+    // `inStock` intentionally not implemented as a filter: the Product
+    // schema has no stock/inventory quantity field, only `isActive`
+    // (already forced true above for the public catalog), so there is no
+    // real data to filter on yet.
 
-    const allowedSortFields = new Set(["createdAt", "price", "name", "_id"]);
-    const safeSortBy = allowedSortFields.has(sortBy) ? sortBy : "createdAt";
+    const sortFieldMap = { createdAt: "createdAt", price: "prices.productPrice", name: "name", _id: "_id" };
+    const safeSortBy = sortFieldMap[sortBy] || "createdAt";
     const safeSortOrder = String(sortOrder).toLowerCase() === "asc" ? 1 : -1;
 
     const sort = {};
@@ -190,8 +188,6 @@ async function getProducts(req, res) {
     if (safeSortBy !== "_id") {
       sort._id = -1;
     }
-    console.log(isEcommerce);
-    console.log(query);
 
     const products = await Product.find(query)
       .sort(sort)

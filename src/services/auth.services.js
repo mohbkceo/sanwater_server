@@ -43,29 +43,19 @@ class AuthServices {
             }}
             }
     }
-    async Register(userData, email, authKey){
-       
+    // `register` is now only reachable by an already-authenticated admin with
+    // the users.create permission (see user.routes.js), so the old public
+    // "authKey" invite gate is gone. It used to accept ANY existing user's
+    // plain MongoDB _id as a valid key (`{$or: [{_id: authKey}, ...]}`),
+    // which was a real auth-bypass path — removed entirely rather than patched.
+    async Register(userData, email){
+
         const existing = await User.findOne({ email })
-       
+
         if (existing) {
           throw new CostumeExption(ERRORS.DUPLICATE.msg, ERRORS.DUPLICATE.statusCode)
         }
-            
 
-        
-
-        const isAuthorizedKeyValid = await User.findOne({ $or: [
-            {
-               _id:authKey
-            },
-            {
-                authKey:authKey
-            }
-        ] })
-
-        if(!isAuthorizedKeyValid) throw new CostumeExption(ERRORS.UNAUTHORIZED.msg, ERRORS.UNAUTHORIZED.statusCode, ERRORS.UNAUTHORIZED.key, {
-            message: 'authKey is not valid'
-        })
         const user = await UserService.creatUser(userData);
 
         if(!user) {
@@ -74,19 +64,15 @@ class AuthServices {
             })
         }
 
-        
-
-        const token = await generateAccessToken(user)
-        const refreshToken = await generateRefreshToken(user);
+        // No tokens/cookies here: the caller is the *creating* admin, not the
+        // new account, so we must not log the creator's browser into the new
+        // account (that would silently swap whose session the cookies belong to).
         return {
-            refreshToken,
-            token,
             result:{
                 user:{
                     email:user.email,
                     fullName:user.fullName,
                     uid:user._id,
-                    authKey:user?.authKey,
                     role:user?.role,
                     permissions: user.permissions || []
                 }

@@ -1,7 +1,6 @@
 const AuthServices = require('../../services/auth.services')
-const { generateAccessToken } = require('../../utils/generateComplexToken');
-const jwt = require('jsonwebtoken');
-
+const { issueCsrfCookie } = require('../../middlewares/authentication/csrf');
+const { logActivity } = require('../../utils/logger');
 
     async function signIn(req, res, next) {
         try {
@@ -13,18 +12,22 @@ const jwt = require('jsonwebtoken');
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
                 sameSite: 'strict',
-                maxAge: 7 * 24 * 60 * 60 * 1000 
+                maxAge: 7 * 24 * 60 * 60 * 1000
             });
-            res.cookie('mellisios_crsf_token', data.accessToken, {
+            res.cookie('access_token', data.accessToken, {
                     httpOnly: true,
                     secure: true,
-                    sameSite:'none', 
+                    sameSite:'none',
                     maxAge: 15 * 60 * 1000
             });
+            issueCsrfCookie(res);
 
+            // Tokens are only ever delivered via httpOnly cookies — never in
+            // the response body, so a captured network log or XSS-read JS
+            // response can't be used to steal a bearer token.
             return res.status(200).json({
                 success: true,
-                ...data
+                result: data.result
             });
 
         } catch (err) {
@@ -32,36 +35,32 @@ const jwt = require('jsonwebtoken');
         }
     }
 
+    // Only reachable by an authenticated admin with the users.create
+    // permission (see user.routes.js) — this creates a *new* admin account,
+    // it does not authenticate the caller's own session, so no cookies are
+    // set here for the new account.
     async function register(req, res, next) {
         try {
             const { userData } = req.body;
 
             // Security: self-registration can never set role or permissions.
-            // New accounts are always plain admins with no permissions.
+            // New accounts are always plain admins with no permissions; only
+            // a super_admin can grant permissions afterwards via User Management.
             const sanitizedUserData = { ...userData, role: 'admin', permissions: [] };
 
             const data = await AuthServices.Register(
                 sanitizedUserData,
-                sanitizedUserData.email,
-                sanitizedUserData?.authKey
+                sanitizedUserData.email
             );
 
-            res.cookie('refreshToken', data.refreshToken, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'strict',
-                maxAge: 7 * 24 * 60 * 60 * 1000
-            });
-            res.cookie('mellisios_crsf_token', data.token, {
-                    httpOnly: true,
-                    secure: true,
-                    sameSite:'none', 
-                    maxAge: 15 * 60 * 1000
+            await logActivity(req, 'CREATE', 'User', data.result.user.uid, {
+                createdEmail: data.result.user.email,
+                createdBy: req.user.uid,
             });
 
             return res.status(201).json({
                 success: true,
-                ...data
+                result: data.result
             });
 
         } catch (err) {
@@ -69,10 +68,12 @@ const jwt = require('jsonwebtoken');
         }
     }
 
+
     async function logout(req, res, next) {
         try {
             res.clearCookie('refreshToken');
-            res.clearCookie('mellisios_crsf_token');
+            res.clearCookie('access_token');
+            res.clearCookie('csrf_token');
 
             return res.status(200).json({
                 success: true,

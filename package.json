@@ -6,7 +6,8 @@
     "start": "node src/server.js",
     "dev": "node src/server.js",
     "migrate:permissions": "node src/scripts/migrate-roles-to-permissions.js",
-    "migrate:catalog": "node src/scripts/migrate-product-catalog.js"
+    "migrate:catalog": "node src/scripts/migrate-product-catalog.js",
+    "migrate:quotations-permission": "node src/scripts/migrate-orders-to-quotations-permission.js"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +21,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.6.2",
     "http-proxy-agent": "^7.0.2",
     "https-proxy-agent": "^7.0.6",
     "joi": "^18.0.2",

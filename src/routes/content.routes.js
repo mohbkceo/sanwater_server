@@ -7,13 +7,6 @@ const contactController = require("../controllers/contents/contactController");
 const { authSanWater, authorize } = require("../middlewares");
 const { PERMISSIONS } = require("../config/permissions");
 const { getPageContent, updatePageContent } = require("../controllers");
-const {
-  placeOrder,
-  getOrders,
-  getOrderById,
-  deleteOrder,
-  setOrderStatus,
-} = require("../controllers/products/orderController");
 
 router.post(
   "/upload/image/v1",
@@ -87,30 +80,8 @@ router.put(
   updatePageContent,
 );
 
-// Orders
-router.post("/order/place", placeOrder);
-router.get(
-  "/orders",
-  authSanWater,
-  authorize(PERMISSIONS.ORDERS.VIEW),
-  getOrders,
-);
-router.get(
-  "/order/:id",
-  authSanWater,
-  authorize(PERMISSIONS.ORDERS.VIEW),
-  getOrderById,
-);
-router.delete(
-  "/order/:id",
-  authSanWater,
-  authorize(PERMISSIONS.ORDERS.MANAGE),
-  deleteOrder,
-);
-router.patch(
-  "/order/:id/status",
-  authSanWater,
-  authorize(PERMISSIONS.ORDERS.MANAGE),
-  setOrderStatus,
-);
+// Orders used to live here (POST /content/order/place etc.) — replaced by
+// the dedicated Quotation system, see routes/quotation.routes.js (mounted
+// at /quotations in app.js). Confirmed 0 documents ever existed under the
+// old Order model, so this is a clean cutover, not a migration.
 module.exports = router;

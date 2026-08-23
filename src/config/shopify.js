@@ -1,8 +1,0 @@
-const SHOPIFY_CONFIG = {
-  STORE_DOMAIN: process.env.SHOPIFY_STORE_DOMAIN,
-  ACCESS_TOKEN: process.env.SHOPIFY_ADMIN_TOKEN,
-  API_VERSION: "2024-01"
-};
-
-
-module.exports = {SHOPIFY_CONFIG}

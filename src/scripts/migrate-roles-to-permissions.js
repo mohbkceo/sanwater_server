@@ -22,13 +22,16 @@ const { PERMISSIONS, ALL_PERMISSIONS, ROLES } = require('../config/permissions')
 
 // Managers previously passed the 'manager' minimum-role gate on all
 // authenticated routes, so they effectively had operational access to
-// products, orders, and content. We grant equivalent permissions.
+// products, quotations, and content. We grant equivalent permissions.
+// (PERMISSIONS.ORDERS was renamed to PERMISSIONS.QUOTATIONS — see
+// migrate-orders-to-quotations-permission.js for the corresponding
+// data migration on already-stored user permission strings.)
 const MANAGER_EQUIVALENT_PERMISSIONS = [
   PERMISSIONS.ANALYTICS.VIEW,
   PERMISSIONS.PRODUCTS.VIEW,
   PERMISSIONS.PRODUCTS.MANAGE,
-  PERMISSIONS.ORDERS.VIEW,
-  PERMISSIONS.ORDERS.MANAGE,
+  PERMISSIONS.QUOTATIONS.VIEW,
+  PERMISSIONS.QUOTATIONS.MANAGE,
   PERMISSIONS.CONTENT.VIEW,
   PERMISSIONS.CONTENT.MANAGE,
 ];

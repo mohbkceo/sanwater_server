@@ -18,7 +18,6 @@
          issuer: 'logix-issuer-system',
          audience: options.audience || 'logix-client',
          subject: payload.uid || 'unknown-user',
-         keyid: PRIVATE_KEYS
      };
      return jwt.sign(basePayload, PRIVATE_KEYS, signOptions);
  }

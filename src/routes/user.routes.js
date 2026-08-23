@@ -5,13 +5,15 @@ const router = express.Router();
 const { authSanWater, authorize } = require('../middlewares');
 const { PERMISSIONS, ROLES, ALL_PERMISSIONS } = require('../config/permissions');
 const { signIn, register, logout, refreshTokenValidation } = require('../controllers');
+const { authLimiter } = require('../middlewares/rateLimit');
 const User = require('../models/user.model');
 const returnResponse  = require('../utils/responseHandler');
 const { SUCCESS, ERRORS } = require('../config/messages');
 
 
-router.post('/auth/register', register);
-router.post('/auth/signin', signIn);
+// Creating new admin accounts is an admin-only action, not public self-registration.
+router.post('/auth/register', authSanWater, authorize(PERMISSIONS.USERS.CREATE), register);
+router.post('/auth/signin', authLimiter, signIn);
 router.post('/auth/logout', logout);
 router.get('/auth/getaccesstoken/v1', refreshTokenValidation);
 

@@ -19,17 +19,21 @@ function deepMerge(target, source, schema) {
 
 
 function logTrafic(req, res, next){
-  const origin = req.headers.origin || "no-origin-header";
-   const host = req.headers.host;
-   const ip =
-     req.headers["x-forwarded-for"]?.split(",")[0] ||
-     req.socket.remoteAddress;
+  // Verbose per-request logging is dev-only noise (and was running on every
+  // single request in production) — keep it available locally, skip it live.
+  if (process.env.NODE_ENV !== 'production') {
+    const origin = req.headers.origin || "no-origin-header";
+    const host = req.headers.host;
+    const ip =
+      req.headers["x-forwarded-for"]?.split(",")[0] ||
+      req.socket.remoteAddress;
 
-   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-   console.log(`Origin: ${origin}`);
-   console.log(`Host: ${host}`);
-   console.log(`IP: ${ip}`);
-   console.log("----");
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    console.log(`Origin: ${origin}`);
+    console.log(`Host: ${host}`);
+    console.log(`IP: ${ip}`);
+    console.log("----");
+  }
 
   next();
 }

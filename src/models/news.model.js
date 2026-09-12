@@ -36,9 +36,14 @@ const newsSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Author is required']
     },
+    authorUser: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
     status: {
         type: String,
-        enum: ['draft', 'published', 'scheduled'],
+        enum: ['draft', 'review', 'published', 'scheduled', 'archived'],
         default: 'draft'
     },
     publishedAt: {
@@ -60,6 +65,11 @@ const newsSchema = new mongoose.Schema({
     isFeatured: {
         type: Boolean,
         default: false
+    },
+    relatedProducts: {
+        type: [mongoose.Schema.Types.ObjectId],
+        ref: 'ProductSchema',
+        default: []
     }
 }, {
     timestamps: true
@@ -67,6 +77,8 @@ const newsSchema = new mongoose.Schema({
 
 // Index for search
 newsSchema.index({ title: 'text', excerpt: 'text', content: 'text', tags: 'text' });
+newsSchema.index({ status: 1, publishedAt: -1 });
+newsSchema.index({ category: 1, updatedAt: -1 });
 
 // Simple slugify function since we don't want to add new libraries if possible
 function generateSlug(text) {
@@ -82,7 +94,7 @@ function generateSlug(text) {
 // Auto-generate slug before saving
 newsSchema.pre('save', async function(next) {
     if (this.isModified('title') || !this.slug) {
-        let baseSlug = generateSlug(this.title);
+        let baseSlug = generateSlug(this.title) || `article-${this._id}`;
         let slug = baseSlug;
         let counter = 1;
         

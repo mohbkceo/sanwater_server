@@ -5,7 +5,11 @@ const eventSchema = new mongoose.Schema(
     type: {
       type: String,
       required: true,
-      enum: ["page_view", "conversion", "cta_click", "scroll", "video_play"],
+      enum: [
+        "page_view", "conversion", "cta_click", "scroll", "video_play",
+        "product_view", "product_inquiry_started", "lead_form_started", "lead_submitted",
+        "article_view", "article_product_clicked", "article_contact_clicked", "article_reading_progress",
+      ],
       index: true,
     },
 
@@ -22,8 +26,8 @@ const eventSchema = new mongoose.Schema(
 
     source: {
       type: String,
-      enum: ["direct", "social", "search", "referral", "email", "paid"],
       default: "direct",
+      maxlength: 100,
       index: true,
     },
 

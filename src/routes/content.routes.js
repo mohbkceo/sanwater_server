@@ -11,12 +11,14 @@ const { getPageContent, updatePageContent } = require("../controllers");
 router.post(
   "/upload/image/v1",
   authSanWater,
+  authorize([PERMISSIONS.CONTENT.MANAGE, PERMISSIONS.PRODUCTS.MANAGE]),
   upload.single("image"),
   imageHandler.uploadImage,
 );
 router.delete(
   "/destroy/image/v1",
   authSanWater,
+  authorize([PERMISSIONS.CONTENT.MANAGE, PERMISSIONS.PRODUCTS.MANAGE]),
   imageHandler.destroyCloudinaryImage,
 );
 

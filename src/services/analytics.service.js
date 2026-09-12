@@ -1,4 +1,5 @@
 const Event = require("../models/event.model");
+const Lead = require("../models/lead.model");
 
 async function createEvent(data) {
   const event = {
@@ -22,8 +23,59 @@ async function createEvent(data) {
     ts: data.ts ? new Date(data.ts) : new Date(),
   };
 
-  console.log("Event Created:", event);
   return Event.create(event);
+}
+
+function buildLeadDateFilter(from, to, field = "createdAt") {
+  const range = {};
+  if (from) range.$gte = new Date(from);
+  if (to) range.$lte = new Date(to);
+  return Object.keys(range).length ? { [field]: range } : {};
+}
+
+async function getLeadAnalytics({ from, to }) {
+  const createdMatch = buildLeadDateFilter(from, to);
+  const [stageEvents, eventCounts, bySource, byProduct, wonBySource, leads] = await Promise.all([
+    Lead.aggregate([
+      { $unwind: "$statusHistory" },
+      { $match: { "statusHistory.newStatus": { $in: ["qualified", "won"] }, ...buildLeadDateFilter(from, to, "statusHistory.changedAt") } },
+      { $group: { _id: "$statusHistory.newStatus", count: { $sum: 1 } } },
+    ]),
+    Event.aggregate([
+      { $match: { type: { $in: ["product_view", "product_inquiry_started", "lead_submitted"] }, ...buildDateFilter(from, to) } },
+      { $group: { _id: "$type", count: { $sum: 1 } } },
+    ]),
+    Lead.aggregate([{ $match: createdMatch }, { $group: { _id: { $ifNull: ["$source", "unknown"] }, count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    Lead.aggregate([{ $match: createdMatch }, { $group: { _id: { id: "$productId", name: "$productName" }, count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),
+    Lead.aggregate([{ $match: { status: "won", ...createdMatch } }, { $group: { _id: { $ifNull: ["$source", "unknown"] }, value: { $sum: { $ifNull: ["$finalValue", "$estimatedValue"] } }, count: { $sum: 1 } } }, { $sort: { value: -1 } }]),
+    Lead.find(createdMatch).select("fullName company status source estimatedValue assignedTo updatedAt").populate("assignedTo", "fullName").sort({ updatedAt: -1 }).limit(100).lean(),
+  ]);
+  const stages = Object.fromEntries(stageEvents.map((item) => [item._id, item.count]));
+  const events = Object.fromEntries(eventCounts.map((item) => [item._id, item.count]));
+  const submitted = events.lead_submitted || 0;
+  const won = stages.won || 0;
+  return {
+    funnel: [
+      { name: "Product View", value: events.product_view || 0 },
+      { name: "Inquiry Started", value: events.product_inquiry_started || 0 },
+      { name: "Lead Submitted", value: submitted },
+      { name: "Qualified", value: stages.qualified || 0 },
+      { name: "Won", value: won },
+    ],
+    bySource: bySource.map((item) => ({ source: item._id, count: item.count })),
+    byProduct: byProduct.map((item) => ({ productId: item._id.id, product: item._id.name, count: item.count })),
+    wonBySource: wonBySource.map((item) => ({ source: item._id, value: item.value, count: item.count })),
+    conversionRate: submitted ? won / submitted : 0,
+    crmLeads: leads.map((lead) => ({ id: lead._id, name: lead.fullName || lead.company, stage: lead.status, source: lead.source || "unknown", value: lead.estimatedValue || 0, owner: lead.assignedTo?.fullName || "Unassigned", lastTouch: lead.updatedAt })),
+  };
+}
+
+async function getArticleAnalytics({ from, to }) {
+  return Event.aggregate([
+    { $match: { type: { $in: ["article_view", "article_product_clicked", "article_contact_clicked"] }, ...buildDateFilter(from, to) } },
+    { $group: { _id: { article: "$meta.article_id", type: "$type" }, count: { $sum: 1 }, visitors: { $addToSet: "$visitor_id" } } },
+    { $project: { _id: 0, articleId: "$_id.article", type: "$_id.type", count: 1, uniqueVisitors: { $size: "$visitors" } } },
+  ]);
 }
 
 function buildDateFilter(from, to) {
@@ -258,6 +310,8 @@ async function getAnalyticsSummary({ from, to }) {
     trend,
     recentEvents,
     funnel,
+    leadAnalytics,
+    articleAnalytics,
   ] = await Promise.all([
     getTraffic({ from, to }),
     getConversions({ from, to }),
@@ -268,6 +322,8 @@ async function getAnalyticsSummary({ from, to }) {
     getTrend({ from, to }),
     getRecentEvents({ from, to }),
     getFunnel({ from, to }),
+    getLeadAnalytics({ from, to }),
+    getArticleAnalytics({ from, to }),
   ]);
 
   const conversionRate = traffic === 0 ? 0 : conversions / traffic;
@@ -283,6 +339,13 @@ async function getAnalyticsSummary({ from, to }) {
     trend,
     recentEvents,
     funnel,
+    businessFunnel: leadAnalytics.funnel,
+    leadsBySource: leadAnalytics.bySource,
+    leadsByProduct: leadAnalytics.byProduct,
+    wonValueBySource: leadAnalytics.wonBySource,
+    leadConversionRate: leadAnalytics.conversionRate,
+    crmLeads: leadAnalytics.crmLeads,
+    articleAnalytics,
   };
 }
 
@@ -299,4 +362,6 @@ module.exports = {
   getTrend,
   getRecentEvents,
   getFunnel,
+  getLeadAnalytics,
+  getArticleAnalytics,
 };

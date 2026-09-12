@@ -1,4 +1,4 @@
-const { SUCCESS } = require('../../config/messages');
+const { SUCCESS, ERRORS } = require('../../config/messages');
 const CostumeExption = require('../../utils/CostumeException');
 const errorHandler = require('../../utils/error.middleware');
 const returnResponse  = require('../../utils/responseHandler');
@@ -6,7 +6,7 @@ const returnResponse  = require('../../utils/responseHandler');
 const cloudinaryv2 = require('cloudinary').v2
 async function uploadImage(req, res) {
     try {
-        const path = req.file.path;
+        const path = req.file?.path;
         
         if(!path) { 
            throw new CostumeExption(ERRORS.NOT_FOUND.key, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `image_path_not_found` })

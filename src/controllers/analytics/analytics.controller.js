@@ -4,16 +4,11 @@ const  validateEvent  = require("../../utils/analytics.validator");
 
   async function trackEvent(req, res) {
   try {
-    const isValid = validateEvent(req.body);
-
-
-    
-    if (!isValid) {
+    const event = validateEvent(req.body);
+    if (!event) {
       return res.sendStatus(400);
     }
-
-
-    await createEvent(req.body);
+    await createEvent(event);
 
     return res.sendStatus(204);
 

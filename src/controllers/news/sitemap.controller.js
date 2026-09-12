@@ -2,8 +2,11 @@ const News = require('../../models/news.model');
 
 const generateSitemap = async (req, res, next) => {
     try {
-        const news = await News.find({ 
-            status: 'published' 
+        const news = await News.find({
+            $or: [
+                { status: 'published' },
+                { status: 'scheduled', publishedAt: { $lte: new Date() } }
+            ]
         }).select('slug updatedAt');
 
         const baseUrl = process.env.FRONTEND_URL || 'https://sanwater.official';
@@ -12,7 +15,7 @@ const generateSitemap = async (req, res, next) => {
         xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
         
         // Main pages
-        const mainPages = ['', '/products', '/about', '/contact_sales', '/news'];
+        const mainPages = ['', '/products', '/about', '/contact-sales', '/news'];
         mainPages.forEach(page => {
             xml += `
             <url>

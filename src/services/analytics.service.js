@@ -28,9 +28,14 @@ async function createEvent(data) {
 
 function buildLeadDateFilter(from, to, field = "createdAt") {
   const range = {};
-  if (from) range.$gte = new Date(from);
-  if (to) range.$lte = new Date(to);
+  if (from) range.$gte = analyticsDate(from, false);
+  if (to) range.$lte = analyticsDate(to, true);
   return Object.keys(range).length ? { [field]: range } : {};
+}
+
+function analyticsDate(value, endOfDay) {
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+  return new Date(dateOnly ? `${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z` : value);
 }
 
 async function getLeadAnalytics({ from, to }) {
@@ -83,8 +88,8 @@ function buildDateFilter(from, to) {
 
   if (from || to) {
     filter.ts = {};
-    if (from) filter.ts.$gte = new Date(from);
-    if (to) filter.ts.$lte = new Date(to);
+    if (from) filter.ts.$gte = analyticsDate(from, false);
+    if (to) filter.ts.$lte = analyticsDate(to, true);
   }
 
   return filter;

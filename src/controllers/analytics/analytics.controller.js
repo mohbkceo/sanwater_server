@@ -1,4 +1,8 @@
 const { createEvent, getAnalyticsSummary } = require("../../services/analytics.service");
+const {
+  getBusinessAnalytics,
+  getFunnelBreakdown,
+} = require("../../services/businessAnalytics.service");
 const  validateEvent  = require("../../utils/analytics.validator");
 
 
@@ -37,4 +41,28 @@ const  validateEvent  = require("../../utils/analytics.validator");
   }
 }
 
-module.exports = { trackEvent, fetchAnalytics }
+async function fetchBusinessAnalytics(req, res) {
+  try {
+    const data = await getBusinessAnalytics(req.query);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode === 400 ? error.message : "Failed to fetch business analytics",
+    });
+  }
+}
+
+async function fetchFunnelBreakdown(req, res) {
+  try {
+    const data = await getFunnelBreakdown(req.query);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode === 400 ? error.message : "Failed to fetch funnel breakdown",
+    });
+  }
+}
+
+module.exports = { trackEvent, fetchAnalytics, fetchBusinessAnalytics, fetchFunnelBreakdown }

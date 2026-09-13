@@ -94,6 +94,9 @@ const eventSchema = new mongoose.Schema(
 
 eventSchema.index({ ts: -1, type: 1 });
 eventSchema.index({ session_id: 1, ts: -1 });
+eventSchema.index({ visitor_id: 1, type: 1, ts: -1 });
 eventSchema.index({ source: 1, ts: -1 });
+eventSchema.index({ type: 1, "meta.product_id": 1, ts: -1 });
+eventSchema.index({ type: 1, device: 1, ts: -1 });
 
 module.exports = mongoose.model("Event", eventSchema);

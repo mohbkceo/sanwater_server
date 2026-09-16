@@ -24,8 +24,8 @@ const SpecificationEntry = new mongoose.Schema({
 const productSchema = new mongoose.Schema({
     author: {type: String, required: true},
     name: {type: String, default: null},
-    productId: {type: String, required: true},
-    family: {type: String, default: "NO-FAMILLY"},
+    productId: { type: String, required: true, trim: true, minlength: 2, maxlength: 50 },
+    family: { type: String, required: true, trim: true, maxlength: 50 },
     serialNumber: {type: String, unique: true, required: true},
     isActive: {type: Boolean, default: true},
     isEcommerce : { type: Boolean, default: false },
@@ -40,17 +40,10 @@ const productSchema = new mongoose.Schema({
         shippingPrice: {type: Number, default: 800, min: 0},
     },
 
-    // --- Catalog / digital-representation fields ---
+    // --- Digital representation fields ---
     // Stable, human-readable identifier for public product URLs
     // (/produits/.../[slug]), distinct from the internal `serialNumber`.
     slug: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
-
-    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null },
-    subcategory: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null },
-    // Named `collectionRef` (not `collection`) because `collection` is a
-    // reserved Mongoose document pathname (it shadows the internal raw
-    // MongoDB collection accessor) — Mongoose warns and it's a known footgun.
-    collectionRef: { type: mongoose.Schema.Types.ObjectId, ref: 'Collection', default: null },
 
     shortDescription: { type: String, trim: true, default: null },
     description: { type: String, trim: true, default: null },

@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-// Shared, embeddable "document" entry used by Product/Category/Collection so
+// Shared, embeddable "document" entry used by catalog resources so
 // PDFs (catalogues, technical sheets, installation guides...) are treated as
 // first-class, described resources instead of mystery file paths.
 // See SANWATER transformation brief, section 35 (DOCUMENTS).

@@ -22,8 +22,7 @@ app.use(logTrafic);
 app.use('/analytics', require('./routes/analytics.routes'))
 app.use('/user', require('./routes/user.routes'))
 app.use('/products', require('./routes/product.routes'));
-app.use('/categories', require('./routes/category.routes'));
-app.use('/collections', require('./routes/collection.routes'));
+app.use('/families', require('./routes/family.routes'));
 app.use('/content', require('./routes/content.routes'))
 app.use('/news', require('./routes/news.routes'))
 app.use('/quotations', require('./routes/quotation.routes'))

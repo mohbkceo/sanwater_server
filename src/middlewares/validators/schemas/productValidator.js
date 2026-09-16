@@ -1,22 +1,17 @@
 const JOI = require("joi");
-const { documentEntrySchema, seoSchema } = require("./categoryValidator");
+const { documentEntrySchema, seoSchema } = require("./sharedValidator");
 
 const specificationSchema = JOI.object({
     label: JOI.string().required().trim(),
     value: JOI.string().required().trim(),
 });
 
-// NOTE: not yet wired into product.routes.js — the create/update endpoints
-// currently run unvalidated. Kept comprehensive and ready so validation can
-// be turned on in a dedicated hardening pass once it's been checked against
-// the live admin UI payloads (author/serialNumber/gallery/prices etc. were
-// previously missing from this schema entirely).
-const productValidatorSchema = JOI.object({
+const productFields = {
     author: JOI.string().optional(),
     name: JOI.string().min(1).max(150).optional().allow(null, ''),
-    productId: JOI.string().max(50).optional(),
+    productId: JOI.string().trim().min(2).max(50),
     serialNumber: JOI.string().optional(),
-    family: JOI.string().max(50).optional(),
+    family: JOI.string().trim().min(1).max(50),
     isActive: JOI.boolean().optional(),
     isEcommerce: JOI.boolean().optional(),
     tags: JOI.array().items(JOI.string()).max(20).optional(),
@@ -30,11 +25,7 @@ const productValidatorSchema = JOI.object({
         shippingPrice: JOI.number().min(0).optional(),
     }).optional(),
 
-    // catalog / digital-representation fields
     slug: JOI.string().lowercase().trim().optional(),
-    category: JOI.string().allow(null, '').optional(),
-    subcategory: JOI.string().allow(null, '').optional(),
-    collection: JOI.string().allow(null, '').optional(),
     shortDescription: JOI.string().allow('', null).max(300).optional(),
     description: JOI.string().allow('', null).optional(),
     material: JOI.string().allow('', null).optional(),
@@ -47,6 +38,20 @@ const productValidatorSchema = JOI.object({
     relatedProducts: JOI.array().items(JOI.string()).optional(),
     status: JOI.string().valid('draft', 'published', 'archived').optional(),
     seo: seoSchema.optional(),
+};
+
+const createProductSchema = JOI.object({
+    ...productFields,
+    family: productFields.family.required().messages({
+        'string.empty': 'Family is required for catalog placement',
+        'any.required': 'Family is required for catalog placement',
+    }),
+    productId: productFields.productId.required().messages({
+        'string.min': 'Product ID must contain at least 2 characters to derive a Sub Family',
+        'any.required': 'Product ID is required to derive a Sub Family',
+    }),
 });
 
-module.exports = { productValidatorSchema };
+const updateProductSchema = JOI.object(productFields).min(1);
+
+module.exports = { createProductSchema, updateProductSchema };

@@ -1,6 +1,6 @@
 /**
  * Commercial definitions live here so analytics cannot quietly drift away
- * from the CRM workflow. SanWater currently has no fulfilled Order model;
+ * from the CRM workflow. San Water currently has no fulfilled Order model;
  * a closed-won lead is therefore the strongest server-authoritative order
  * outcome available today.
  */

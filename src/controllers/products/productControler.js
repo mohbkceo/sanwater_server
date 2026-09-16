@@ -6,6 +6,7 @@ const errorHandler = require("../../utils/error.middleware");
 const returnResponse = require("../../utils/responseHandler");
 const { default: mongoose } = require("mongoose");
 const { logActivity } = require("../../utils/logger");
+const { buildCatalogFilter } = require("../../services/catalogFamily.service");
 
 async function createProduct(req, res) {
   try {
@@ -17,10 +18,9 @@ async function createProduct(req, res) {
       productId,
       productVariants,
       prices,
-      // catalog / digital-representation fields
-      category,
-      subcategory,
-      collection, // public API name; stored as collectionRef (see product.model.js)
+      isActive,
+      isEcommerce,
+      slug,
       shortDescription,
       description,
       material,
@@ -61,9 +61,9 @@ async function createProduct(req, res) {
       gallery,
       productVariants,
       prices,
-      category: category || null,
-      subcategory: subcategory || null,
-      collectionRef: collection || null,
+      isActive,
+      isEcommerce,
+      slug,
       shortDescription,
       description,
       material,
@@ -99,11 +99,9 @@ async function getProducts(req, res) {
     const {
       search,
       family,
-      category,
-      collection,
+      subFamily,
       minPrice,
       maxPrice,
-      isAdmin,
       max,
       isEcommerce,
       lastId,
@@ -111,6 +109,7 @@ async function getProducts(req, res) {
       sortOrder,
     } = req.query;
 
+    const isAdmin = Boolean(req.catalogAdmin);
     const limit = isAdmin ? 1000 : Math.min(Number(max) || 15, 100);
 
     const query = {};
@@ -123,20 +122,6 @@ async function getProducts(req, res) {
       // for strictly `null` here was excluding the entire live catalog
       // (confirmed: 210/211 products have isEcommerce:false, 0 have null).
       query.isEcommerce = { $in: [false, null] };
-    }
-
-    if (typeof category === "string" && category.trim()) {
-      const Category = require("../../models/category.model");
-      const categoryDoc = await Category.findOne({ slug: category.trim() }).select("_id");
-      // An unknown category slug should return an empty result set, not the
-      // full unfiltered catalog, so fall back to an id nothing can match.
-      query.category = categoryDoc ? categoryDoc._id : new mongoose.Types.ObjectId();
-    }
-
-    if (typeof collection === "string" && collection.trim()) {
-      const Collection = require("../../models/collection.model");
-      const collectionDoc = await Collection.findOne({ slug: collection.trim() }).select("_id");
-      query.collectionRef = collectionDoc ? collectionDoc._id : new mongoose.Types.ObjectId();
     }
 
     if (isEcommerce === "true") {
@@ -157,9 +142,7 @@ async function getProducts(req, res) {
       ];
     }
 
-    if (typeof family === "string" && family.trim()) {
-      query.family = { $regex: escapeRegex(family.trim()), $options: "i" };
-    }
+    Object.assign(query, buildCatalogFilter({ family, subFamily }));
 
     const min = toNumber(minPrice);
     const maxP = toNumber(maxPrice);
@@ -192,8 +175,6 @@ async function getProducts(req, res) {
     const products = await Product.find(query)
       .sort(sort)
       .limit(limit)
-      .populate("category", "name slug")
-      .populate("collectionRef", "name slug")
       .lean();
 
     return returnResponse(res, SUCCESS.RESOURCES_FOUND, {
@@ -217,9 +198,6 @@ async function getProduct(req, res) {
     const product = await Product.findOne({
       $or: [{ serialNumber }, { slug: serialNumber }],
     })
-      .populate("category", "name slug")
-      .populate("subcategory", "name slug")
-      .populate("collectionRef", "name slug")
       .populate("relatedProducts", "name slug productId gallery shortDescription");
 
     if (!product) {
@@ -248,12 +226,9 @@ async function updateProduct(req, res) {
       prices,
       isEcommerce,
       name,
+      productId,
       isActive,
-      // catalog / digital-representation fields
       slug,
-      category,
-      subcategory,
-      collection,
       shortDescription,
       description,
       material,
@@ -268,9 +243,10 @@ async function updateProduct(req, res) {
       seo,
     } = req.body;
 
-    const updateData = {
+    const candidateUpdates = {
       family,
       name,
+      productId,
       tags,
       gallery,
       productVariants,
@@ -288,19 +264,12 @@ async function updateProduct(req, res) {
       relatedProducts,
       status,
       seo,
+      isActive,
+      slug,
     };
-
-    // Only touch relational/slug fields when explicitly provided, so a
-    // partial update never accidentally clears them.
-    if (slug !== undefined) updateData.slug = slug;
-    if (category !== undefined) updateData.category = category || null;
-    if (subcategory !== undefined) updateData.subcategory = subcategory || null;
-    if (collection !== undefined) updateData.collectionRef = collection || null;
-
-    // Allow updating isActive field
-    if (isActive !== undefined) {
-      updateData.isActive = isActive;
-    }
+    const updateData = Object.fromEntries(
+      Object.entries(candidateUpdates).filter(([, value]) => value !== undefined),
+    );
 
     const product = await Product.findOneAndUpdate(
       { serialNumber },

@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-// Shared, embeddable SEO block reused across Product/Category/Collection so
+// Shared, embeddable SEO block reused across catalog resources so
 // every indexable entity can carry its own title/description/canonical
 // instead of relying on one global metadata object.
 const SeoSchema = new mongoose.Schema(

@@ -1,22 +1,44 @@
-# Product catalog Families
+# Admin-managed catalog taxonomy
 
-Product catalog membership has no separate assignment records:
+The catalog source of truth is a persisted hierarchy:
 
-- `Family` is the trimmed value of `Product.family`.
-- `Sub Family` is the uppercased first two characters of the trimmed `Product.productId`.
-- `FamilyConfig` stores presentation only (display name, description, image, order, visibility, and SEO metadata).
+`Family -> SubFamily -> Product`
 
-## APIs
+A Product is assigned by `subFamily` only. On every Product create or taxonomy-changing update, the server loads that SubFamily and stores both its `_id` and the SubFamily's parent `family` `_id`. Browser-supplied Family values are rejected. Product IDs are identifiers only and have no taxonomy meaning.
 
-- `GET /families` returns public, active Families/Sub Families derived from publicly eligible Products.
-- `GET /families/:familyKey` returns one public Family.
-- `GET /families/admin` returns the complete derived hierarchy and Product rows; it requires `products.view`.
-- `PUT /families/:familyKey/config` updates Family presentation; it requires `products.manage`.
-- `PUT /families/:familyKey/subfamilies/:subFamilyKey/config` updates Sub Family presentation; it requires `products.manage`.
-- `GET /products/admin` is the protected admin Product list; `GET /products` remains public.
+## Visibility
 
-Product filtering uses `family` and `subFamily`. Family is an exact, trimmed match. Sub Family is an exact normalized two-character prefix of `productId`, not a substring. Supplying `subFamily` without `family` is supported as a global prefix filter; the frontend normally requires a Family selection first.
+Public Family APIs return active Families and active SubFamilies only. Public Product list/detail queries require the Product, its Family, and its SubFamily to be active. Admin APIs include inactive entities. Disabling taxonomy never mutates `Product.isActive`.
 
-## Explicit legacy cleanup
+## API
 
-`npm run migrate:catalog` runs the manual migration in `src/scripts/migrate-product-families.js`. It backfills missing slug/status values and unsets only legacy Product classification fields. It is never run at startup and does not delete legacy Category or Collection documents.
+- `GET /families` — public active hierarchy
+- `GET /families/:slug` — one public active Family
+- `GET /families/admin` — protected complete hierarchy and aggregate counts
+- `POST /families` — create Family (`products.manage`)
+- `PUT /families/:id` — update Family (`products.manage`)
+- `DELETE /families/:id` — password-confirmed delete (`products.manage`)
+- `POST /families/:familyId/subfamilies` — create SubFamily
+- `PUT /families/subfamilies/:id` — update SubFamily
+- `DELETE /families/subfamilies/:id` — password-confirmed delete/reassignment
+- `GET /products` and `GET /products/admin` — public/admin listings
+
+Filters use slugs, for example `/products?family=sanitary-mixers&subFamily=lavabo`.
+
+## Delete integrity and security
+
+Every write is protected by the existing cookie authentication, CSRF middleware, and `products.manage` authorization. Delete requests also verify the authenticated user's current bcrypt password.
+
+A Family with Products or SubFamilies cannot be deleted. An empty SubFamily can be deleted directly. A non-empty SubFamily requires `replacementSubFamilyId`; Products are reassigned to the replacement and inherit its Family in one MongoDB transaction. Standalone MongoDB deployments use a guarded update/delete flow with rollback on delete failure. Products are never cascade-deleted.
+
+## Migration and deployment
+
+1. Back up MongoDB.
+2. Deploy this migration-compatible code while keeping public traffic on the previous release.
+3. Run `npm run migrate:admin-taxonomy -- --dry-run` from `server` and review counts/errors.
+4. Run `npm run migrate:admin-taxonomy`.
+5. Verify every Product has ObjectId `family` and `subFamily` values and that `/families/admin` counts match.
+6. Deploy/restart the final backend and frontend together.
+7. After the rollback window, archive or remove the unused `familyconfigs` collection. No runtime model or route reads it.
+
+The migration is manual and idempotent. It uses legacy `Product.family` and the first two Product ID characters once, copies matching FamilyConfig presentation fields, preserves unrelated Product data, and reports scanned/created/assigned/skipped/error counts.

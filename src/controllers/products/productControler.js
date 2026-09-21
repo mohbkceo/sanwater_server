@@ -6,12 +6,15 @@ const errorHandler = require("../../utils/error.middleware");
 const returnResponse = require("../../utils/responseHandler");
 const { default: mongoose } = require("mongoose");
 const { logActivity } = require("../../utils/logger");
-const { buildCatalogFilter } = require("../../services/catalogFamily.service");
+const {
+  resolveCatalogFilter,
+  resolveSubFamilyAssignment,
+} = require("../../services/taxonomy.service");
 
 async function createProduct(req, res) {
   try {
     const {
-      family,
+      subFamily,
       tags,
       name,
       gallery,
@@ -35,7 +38,7 @@ async function createProduct(req, res) {
       seo,
     } = req.body;
 
-    const author = "sanwater_admin@gmail.com";
+    const author = req.user.email || req.user.uid;
     let serialNumber;
 
     do {
@@ -51,9 +54,10 @@ async function createProduct(req, res) {
       );
     }
 
+    const taxonomy = await resolveSubFamilyAssignment(subFamily);
     const product = new Product({
       author,
-      family,
+      ...taxonomy,
       name,
       serialNumber,
       tags,
@@ -137,12 +141,15 @@ async function getProducts(req, res) {
       const safe = escapeRegex(search.trim());
       query.$or = [
         { name: { $regex: safe, $options: "i" } },
-        { family: { $regex: safe, $options: "i" } },
         { productId: { $regex: safe, $options: "i" } },
       ];
     }
 
-    Object.assign(query, buildCatalogFilter({ family, subFamily }));
+    Object.assign(query, await resolveCatalogFilter({
+      family,
+      subFamily,
+      publicOnly: !isAdmin,
+    }));
 
     const min = toNumber(minPrice);
     const maxP = toNumber(maxPrice);
@@ -173,6 +180,8 @@ async function getProducts(req, res) {
     }
 
     const products = await Product.find(query)
+      .populate('family', 'name slug isActive')
+      .populate('subFamily', 'name slug family isActive')
       .sort(sort)
       .limit(limit)
       .lean();
@@ -195,9 +204,16 @@ async function getProduct(req, res) {
     // Accept either the internal serialNumber or the public SEO slug so the
     // same endpoint keeps working as the frontend migrates its product URLs
     // from /products/view/:serialNumber to slug-based routes.
-    const product = await Product.findOne({
+    const productQuery = {
       $or: [{ serialNumber }, { slug: serialNumber }],
-    })
+    };
+    if (!req.catalogAdmin) {
+      Object.assign(productQuery, await resolveCatalogFilter({ publicOnly: true }));
+      productQuery.isActive = true;
+    }
+    const product = await Product.findOne(productQuery)
+      .populate('family', 'name slug isActive')
+      .populate('subFamily', 'name slug family isActive')
       .populate("relatedProducts", "name slug productId gallery shortDescription");
 
     if (!product) {
@@ -219,7 +235,7 @@ async function updateProduct(req, res) {
   try {
     const { serialNumber } = req.params;
     const {
-      family,
+      subFamily,
       tags,
       productVariants,
       gallery,
@@ -244,7 +260,6 @@ async function updateProduct(req, res) {
     } = req.body;
 
     const candidateUpdates = {
-      family,
       name,
       productId,
       tags,
@@ -271,11 +286,15 @@ async function updateProduct(req, res) {
       Object.entries(candidateUpdates).filter(([, value]) => value !== undefined),
     );
 
+    if (subFamily !== undefined) {
+      Object.assign(updateData, await resolveSubFamilyAssignment(subFamily));
+    }
+
     const product = await Product.findOneAndUpdate(
       { serialNumber },
       updateData,
       { new: true, runValidators: true },
-    );
+    ).populate('family', 'name slug').populate('subFamily', 'name slug family');
 
     if (!product) {
       throw new CostumeExption(

@@ -24,8 +24,9 @@ const SpecificationEntry = new mongoose.Schema({
 const productSchema = new mongoose.Schema({
     author: {type: String, required: true},
     name: {type: String, default: null},
-    productId: { type: String, required: true, trim: true, minlength: 2, maxlength: 50 },
-    family: { type: String, required: true, trim: true, maxlength: 50 },
+    productId: { type: String, required: true, trim: true, maxlength: 50 },
+    family: { type: mongoose.Schema.Types.ObjectId, ref: 'Family', required: true, index: true },
+    subFamily: { type: mongoose.Schema.Types.ObjectId, ref: 'SubFamily', required: true, index: true },
     serialNumber: {type: String, unique: true, required: true},
     isActive: {type: Boolean, default: true},
     isEcommerce : { type: Boolean, default: false },

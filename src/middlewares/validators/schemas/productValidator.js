@@ -9,9 +9,9 @@ const specificationSchema = JOI.object({
 const productFields = {
     author: JOI.string().optional(),
     name: JOI.string().min(1).max(150).optional().allow(null, ''),
-    productId: JOI.string().trim().min(2).max(50),
+    productId: JOI.string().trim().min(1).max(50),
     serialNumber: JOI.string().optional(),
-    family: JOI.string().trim().min(1).max(50),
+    subFamily: JOI.string().hex().length(24),
     isActive: JOI.boolean().optional(),
     isEcommerce: JOI.boolean().optional(),
     tags: JOI.array().items(JOI.string()).max(20).optional(),
@@ -42,13 +42,12 @@ const productFields = {
 
 const createProductSchema = JOI.object({
     ...productFields,
-    family: productFields.family.required().messages({
-        'string.empty': 'Family is required for catalog placement',
-        'any.required': 'Family is required for catalog placement',
+    subFamily: productFields.subFamily.required().messages({
+        'string.empty': 'Sub Family is required for catalog placement',
+        'any.required': 'Sub Family is required for catalog placement',
     }),
     productId: productFields.productId.required().messages({
-        'string.min': 'Product ID must contain at least 2 characters to derive a Sub Family',
-        'any.required': 'Product ID is required to derive a Sub Family',
+        'any.required': 'Product ID is required',
     }),
 });
 

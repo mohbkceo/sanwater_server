@@ -14,6 +14,10 @@ router.get('/admin', authSanWater, authorize(PERMISSIONS.PRODUCTS.VIEW), (req, r
   req.catalogAdmin = true;
   return productController.getProducts(req, res);
 });
+router.get('/admin/:serialNumber', authSanWater, authorize(PERMISSIONS.PRODUCTS.VIEW), (req, res) => {
+  req.catalogAdmin = true;
+  return productController.getProduct(req, res);
+});
 router.get('/', productController.getProducts);
 router.get('/:serialNumber', productController.getProduct);
 router.put('/:serialNumber', authSanWater, authorize(PERMISSIONS.PRODUCTS.MANAGE), validate(updateProductSchema), productController.updateProduct);

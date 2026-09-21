@@ -6,8 +6,9 @@ const errorHandler = (res,err) => {
   try {
     console.error('Caught error: ', err.stack || err.message);
 
-    const message = err.message || 'Something went wrong';
-    const errorCode = err.statusCode || 500
+    const duplicate = err?.code === 11000;
+    const message = duplicate ? 'Resource already exists' : (err.message || 'Something went wrong');
+    const errorCode = duplicate ? 409 : (err.statusCode || 500)
     
     console.error(message, errorCode, err?.meta?.message);
     return res.status(errorCode).json({ message , errorCode });
@@ -18,4 +19,3 @@ const errorHandler = (res,err) => {
   };
   
   module.exports = errorHandler;
-  

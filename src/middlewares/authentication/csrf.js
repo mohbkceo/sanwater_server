@@ -24,6 +24,17 @@ function issueCsrfCookie(res, maxAge) {
   return token;
 }
 
+// The CSRF cookie belongs to the API host, so JavaScript running on the
+// production frontend host cannot read it through document.cookie. Expose the
+// same non-secret nonce in a no-store response; the browser will keep the
+// matching cookie on the API host and the client can echo the response value in
+// the request header.
+function getCsrfToken(req, res) {
+  const csrfToken = issueCsrfCookie(res);
+  res.set('Cache-Control', 'no-store');
+  return res.status(200).json({ success: true, csrfToken });
+}
+
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function csrfProtection(req, res, next) {
@@ -38,4 +49,4 @@ function csrfProtection(req, res, next) {
   next();
 }
 
-module.exports = { issueCsrfCookie, csrfProtection, CSRF_COOKIE };
+module.exports = { issueCsrfCookie, getCsrfToken, csrfProtection, CSRF_COOKIE };

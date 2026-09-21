@@ -20,14 +20,15 @@ const { logActivity } = require('../../utils/logger');
                     sameSite:'none',
                     maxAge: 15 * 60 * 1000
             });
-            issueCsrfCookie(res);
+            const csrfToken = issueCsrfCookie(res);
 
             // Tokens are only ever delivered via httpOnly cookies — never in
             // the response body, so a captured network log or XSS-read JS
             // response can't be used to steal a bearer token.
             return res.status(200).json({
                 success: true,
-                result: data.result
+                result: data.result,
+                csrfToken
             });
 
         } catch (err) {

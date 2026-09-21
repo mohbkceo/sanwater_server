@@ -9,12 +9,14 @@ const { authLimiter } = require('../middlewares/rateLimit');
 const User = require('../models/user.model');
 const returnResponse  = require('../utils/responseHandler');
 const { SUCCESS, ERRORS } = require('../config/messages');
+const { getCsrfToken, csrfProtection } = require('../middlewares/authentication/csrf');
 
 
 // Creating new admin accounts is an admin-only action, not public self-registration.
 router.post('/auth/register', authSanWater, authorize(PERMISSIONS.USERS.CREATE), register);
 router.post('/auth/signin', authLimiter, signIn);
-router.post('/auth/logout', logout);
+router.get('/auth/csrf', getCsrfToken);
+router.post('/auth/logout', csrfProtection, logout);
 router.get('/auth/getaccesstoken/v1', refreshTokenValidation);
 
 

@@ -34,8 +34,11 @@ async function refreshTokenValidation(req, res) {
             sameSite:'none',
             maxAge: 15 * 60 * 1000
     });
-    issueCsrfCookie(res);
-   res.status(SUCCESS.RESOURCES_CREATED.statusCode).json({msg: SUCCESS.RESOURCES_CREATED.msg});
+    const csrfToken = issueCsrfCookie(res);
+    res.status(SUCCESS.RESOURCES_CREATED.statusCode).json({
+      msg: SUCCESS.RESOURCES_CREATED.msg,
+      csrfToken
+    });
   } catch (err) {
    errorHandler(res, err)
   }

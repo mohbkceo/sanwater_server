@@ -7,6 +7,12 @@ const { logActivity } = require('../../utils/logger');
             const { identifier, password } = req.body;
 
             const data = await AuthServices.SignIn(identifier, password);
+            req.user = { uid: data.result.user.uid };
+            await logActivity(req, 'LOGIN', 'User', data.result.user.uid, {
+                summary: `Admin signed in: ${data.result.user.fullName || data.result.user.email}`,
+                entity: { id: data.result.user.uid, name: data.result.user.fullName, email: data.result.user.email },
+                changedFields: [], changes: [],
+            });
 
             res.cookie('refreshToken', data.refreshToken, {
                 httpOnly: true,

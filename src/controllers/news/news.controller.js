@@ -7,7 +7,8 @@ const Event = require('../../models/event.model');
 const returnResponse = require('../../utils/responseHandler');
 const { SUCCESS, ERRORS } = require('../../config/messages');
 const CostumeExption = require('../../utils/CostumeException');
-const { logActivity } = require('../../utils/logger');
+const { logActivity, logUpdateActivity } = require('../../utils/logger');
+const { buildEntityDetails, plain } = require('../../utils/audit');
 const sanitizeNewsHtml = require('../../utils/sanitizeNewsHtml');
 
 const EDITABLE_FIELDS = ['title', 'excerpt', 'content', 'coverImage', 'category', 'tags', 'status', 'publishedAt', 'seoTitle', 'seoDescription', 'canonicalUrl', 'isFeatured', 'relatedProducts'];
@@ -54,7 +55,7 @@ const createNews = async (req, res, next) => {
     if (news.status === 'published') news.publishedAt = new Date();
     await news.save();
     await createRevision(news, req.user.uid, news.status === 'published' ? 'publish' : 'manual_save');
-    await logActivity(req, 'CREATE', 'News', news._id, { title: news.title, status: news.status });
+    await logActivity(req, 'CREATE', 'News', news._id, buildEntityDetails('News', news, `Created article ${news.title}`));
     return returnResponse(res, SUCCESS.RESOURCES_CREATED, news);
   } catch (err) { next(err); }
 };
@@ -116,13 +117,14 @@ const updateNews = async (req, res, next) => {
   try {
     const news = await News.findById(req.params.id);
     if (!news) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
+    const before = news.toObject();
     const previousStatus = news.status;
     await applyPayload(news, req.body);
     if (news.status === 'published' && previousStatus !== 'published') news.publishedAt = new Date();
     await news.save();
     const reason = news.status === 'published' && previousStatus !== 'published' ? 'publish' : 'manual_save';
     await createRevision(news, req.user.uid, reason);
-    await logActivity(req, 'UPDATE', 'News', news._id, { title: news.title, previousStatus, status: news.status });
+    await logUpdateActivity(req, 'UPDATE', 'News', news._id, before, news, `Updated article ${news.title}`);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, news);
   } catch (err) { next(err); }
 };
@@ -131,10 +133,12 @@ const autosaveNews = async (req, res, next) => {
   try {
     const news = await News.findById(req.params.id);
     if (!news) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
+    const before = news.toObject();
     const status = news.status;
     await applyPayload(news, req.body, AUTOSAVE_FIELDS);
     news.status = status;
     await news.save();
+    await logUpdateActivity(req, 'UPDATE', 'News', news._id, before, news, `Autosaved article ${news.title}`);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, { _id: news._id, updatedAt: news.updatedAt, status: news.status });
   } catch (err) { next(err); }
 };
@@ -158,10 +162,11 @@ const restoreRevision = async (req, res, next) => {
   try {
     const [news, revision] = await Promise.all([News.findById(req.params.id), NewsRevision.findOne({ _id: req.params.revisionId, article: req.params.id })]);
     if (!news || !revision) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
+    const before = news.toObject();
     await applyPayload(news, revision.snapshot);
     await news.save();
     await createRevision(news, req.user.uid, 'restore');
-    await logActivity(req, 'RESTORE_REVISION', 'News', news._id, { restoredVersion: revision.version });
+    await logUpdateActivity(req, 'UPDATE', 'News', news._id, before, news, `Restored article ${news.title} to revision ${revision.version}`);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, news);
   } catch (err) { next(err); }
 };
@@ -170,6 +175,7 @@ const bulkUpdateNews = async (req, res, next) => {
   try {
     const { ids, action } = req.body;
     const articles = await News.find({ _id: { $in: ids } });
+    const beforeById = new Map(articles.map((article) => [String(article._id), plain(article)]));
     for (const article of articles) {
       if (action === 'publish') { article.status = 'published'; article.publishedAt = new Date(); }
       if (action === 'archive') article.status = 'archived';
@@ -177,7 +183,7 @@ const bulkUpdateNews = async (req, res, next) => {
       await article.save();
       await createRevision(article, req.user.uid, action === 'publish' ? 'publish' : 'manual_save');
     }
-    await logActivity(req, 'BULK_UPDATE', 'News', null, { ids, action, updated: articles.length });
+    for (const article of articles) await logUpdateActivity(req, 'UPDATE', 'News', article._id, beforeById.get(String(article._id)), article, `Bulk ${action} article ${article.title}`);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, { updated: articles.length });
   } catch (err) { next(err); }
 };
@@ -186,10 +192,11 @@ const deleteNews = async (req, res, next) => {
   try {
     const news = await News.findById(req.params.id);
     if (!news) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
+    const before = news.toObject();
     news.status = 'archived';
     await news.save();
     await createRevision(news, req.user.uid, 'manual_save');
-    await logActivity(req, 'ARCHIVE', 'News', news._id, { title: news.title });
+    await logUpdateActivity(req, 'UPDATE', 'News', news._id, before, news, `Archived article ${news.title}`);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, news);
   } catch (err) { next(err); }
 };

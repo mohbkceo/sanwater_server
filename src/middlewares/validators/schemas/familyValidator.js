@@ -21,8 +21,12 @@ const deleteSubFamilySchema = Joi.object({
   password: Joi.string().required().min(1),
   replacementSubFamilyId: Joi.string().hex().length(24).optional(),
 });
+const productIdsSchema = Joi.object({
+  productIds: Joi.array().items(Joi.string().hex().length(24)).min(1).max(200).unique().required(),
+});
 
 module.exports = {
   createFamilySchema, updateFamilySchema, createSubFamilySchema,
   updateSubFamilySchema, deleteFamilySchema, deleteSubFamilySchema,
+  productIdsSchema,
 };

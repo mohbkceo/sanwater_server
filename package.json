@@ -7,7 +7,6 @@
     "dev": "node src/server.js",
     "test": "node --test",
     "migrate:permissions": "node src/scripts/migrate-roles-to-permissions.js",
-    "migrate:admin-taxonomy": "node src/scripts/migrate-admin-taxonomy.js",
     "migrate:quotations-permission": "node src/scripts/migrate-orders-to-quotations-permission.js"
   },
   "keywords": [],

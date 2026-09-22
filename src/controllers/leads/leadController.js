@@ -6,7 +6,7 @@ const Event = require('../../models/event.model');
 const returnResponse = require('../../utils/responseHandler');
 const { SUCCESS, ERRORS } = require('../../config/messages');
 const CostumeExption = require('../../utils/CostumeException');
-const { logActivity } = require('../../utils/logger');
+const { logActivity, logUpdateActivity } = require('../../utils/logger');
 
 const clean = (value) => {
   if (value === undefined || value === null || value === '') return null;
@@ -124,9 +124,11 @@ const updateLead = async (req, res, next) => {
   try {
     const update = { ...req.body };
     for (const field of ['nextFollowUpAt', 'lastContactAt']) if (update[field] === '') update[field] = null;
+    const before = await Lead.findById(req.params.id).lean();
+    if (!before) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
     const lead = await Lead.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
     if (!lead) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
-    await logActivity(req, 'UPDATE', 'Lead', lead._id, { fields: Object.keys(update) });
+    await logUpdateActivity(req, 'UPDATE', 'Lead', lead._id, before, lead, `Updated lead ${lead.fullName}`);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, lead);
   } catch (err) { next(err); }
 };
@@ -137,7 +139,7 @@ const addNote = async (req, res, next) => {
     if (!lead) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
     lead.notes.push({ content: clean(req.body.content), author: req.user.uid });
     await lead.save();
-    await logActivity(req, 'ADD_NOTE', 'Lead', lead._id, {});
+    await logActivity(req, 'UPDATE', 'Lead', lead._id, { summary: `Added a note to lead ${lead.fullName}`, entity: { id: lead._id, name: lead.fullName }, changedFields: ['notes'], changes: [{ field: 'notes', label: 'Notes', before: `${lead.notes.length - 1} notes`, after: `${lead.notes.length} notes` }] });
     const note = await Lead.findById(lead._id).select('notes').populate('notes.author', 'fullName email');
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, note.notes[note.notes.length - 1]);
   } catch (err) { next(err); }
@@ -152,11 +154,12 @@ const assignLead = async (req, res, next) => {
       const user = await User.findOne({ _id: assignedTo, role: { $in: ['admin', 'super_admin'] } }).select('_id');
       if (!user) throw new CostumeExption(ERRORS.INVALID.msg, ERRORS.INVALID.statusCode, ERRORS.INVALID.key, { message: 'invalid_assignee' });
     }
+    const before = lead.toObject();
     const previousAssignee = lead.assignedTo || null;
     lead.assignedTo = assignedTo;
     lead.assignmentHistory.push({ previousAssignee, newAssignee: assignedTo, changedBy: req.user.uid });
     await lead.save();
-    await logActivity(req, 'ASSIGN', 'Lead', lead._id, { previousAssignee, assignedTo });
+    await logUpdateActivity(req, 'MOVE', 'Lead', lead._id, before, lead, `Assigned lead ${lead.fullName}`);
     return getLeadById(req, res, next);
   } catch (err) { next(err); }
 };
@@ -165,6 +168,7 @@ const updateStatus = async (req, res, next) => {
   try {
     const lead = await Lead.findById(req.params.id);
     if (!lead) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
+    const before = lead.toObject();
     const previousStatus = lead.status;
     const { status, finalValue, orderReference, lostReason, lostExplanation } = req.body;
     lead.status = status;
@@ -180,7 +184,7 @@ const updateStatus = async (req, res, next) => {
       lead.lostExplanation = clean(lostExplanation);
     }
     await lead.save();
-    await logActivity(req, 'UPDATE_STATUS', 'Lead', lead._id, { previousStatus, newStatus: status, lostReason: lead.lostReason, finalValue: lead.finalValue });
+    await logUpdateActivity(req, 'UPDATE', 'Lead', lead._id, before, lead, `Changed lead ${lead.fullName} status to ${status}`);
     return getLeadById(req, res, next);
   } catch (err) { next(err); }
 };

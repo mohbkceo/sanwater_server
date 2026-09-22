@@ -3,7 +3,7 @@ const { ERRORS, SUCCESS } = require("../../config/messages");
 const CostumeException = require("../../utils/CostumeException");
 const returnResponse = require("../../utils/responseHandler");
 const errorHandler = require("../../utils/error.middleware");
-const { logActivity } = require("../../utils/logger");
+const { logActivity, logUpdateActivity } = require("../../utils/logger");
 const { hashPassword, comparePassword } = require("../../utils/Password");
 
 /**
@@ -76,6 +76,7 @@ async function updateBasicInfo(req, res) {
     if (profileImage !== undefined)
       updateData.profileImage = profileImage || null;
 
+    const before = await User.findById(userId).lean();
     const user = await User.findByIdAndUpdate(userId, updateData, {
       new: true,
     }).select("-password");
@@ -89,9 +90,7 @@ async function updateBasicInfo(req, res) {
       );
     }
 
-    await logActivity(req, "UPDATE", "User", userId, {
-      updatedFields: Object.keys(updateData),
-    });
+    await logUpdateActivity(req, "UPDATE", "User", userId, before, user, `Updated admin profile ${user.fullName || user.email}`);
 
     const basicInfo = {
       fullName: user.fullName,
@@ -171,9 +170,7 @@ async function changePassword(req, res) {
     user.password = hashedPassword;
     await user.save();
 
-    await logActivity(req, "UPDATE", "User", userId, {
-      action: "password_changed",
-    });
+    await logActivity(req, "SECURITY", "User", userId, { summary: `Changed password for ${user.fullName || user.email}`, entity: { id: userId, name: user.fullName, email: user.email }, changedFields: [], changes: [] });
 
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, {
       message: "Password changed successfully",

@@ -29,7 +29,8 @@ router.get('/', authSanWater, authorize(PERMISSIONS.USERS.VIEW), async (req, res
   }
 });
 
-const { logActivity } = require('../utils/logger');
+const { logActivity, logUpdateActivity } = require('../utils/logger');
+const { buildEntityDetails } = require('../utils/audit');
 const { getUserProfile, updateBasicInfo, changePassword, getSecurityInfo } = require('../controllers/users/userController');
 const CostumeExption = require('../utils/CostumeException');
 
@@ -68,7 +69,7 @@ router.put('/:id/permissions', authSanWater, authorize(PERMISSIONS.USERS.MANAGE_
     if (role !== undefined) updateData.role = role;
 
     const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true }).select('-password');
-    await logActivity(req, 'PERMISSIONS_CHANGE', 'User', user._id, { newPermissions: permissions, newRole: role, userEmail: user.email });
+    await logUpdateActivity(req, 'SECURITY', 'User', user._id, user, updatedUser, `Changed permissions for ${user.fullName || user.email}`);
     returnResponse(res, SUCCESS.RESOURCES_UPDATED, updatedUser);
   } catch (err) {
     next(err);
@@ -94,7 +95,7 @@ router.delete('/:id', authSanWater, authorize(PERMISSIONS.USERS.DELETE), async (
     }
 
     await user.deleteOne();
-    await logActivity(req, 'DELETE', 'User', user._id, { responsible: uid, responsibleEmail: email });
+    await logActivity(req, 'DELETE', 'User', user._id, buildEntityDetails('User', user, `Deleted admin ${user.fullName || user.email}`, { deleted: true }));
     returnResponse(res, SUCCESS.RESOURCES_DELETED);
   } catch (err) {
     next(err);

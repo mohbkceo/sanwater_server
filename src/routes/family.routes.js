@@ -6,6 +6,7 @@ const validate = require('../middlewares/validators/validate');
 const {
   createFamilySchema, updateFamilySchema, createSubFamilySchema,
   updateSubFamilySchema, deleteFamilySchema, deleteSubFamilySchema,
+  productIdsSchema,
 } = require('../middlewares/validators/schemas/familyValidator');
 
 const router = express.Router();
@@ -22,6 +23,8 @@ router.post('/:familyId/subfamilies', ...canManage, validate(createSubFamilySche
 router.put('/:id', ...canManage, validate(updateFamilySchema), familyController.updateFamily);
 router.delete('/:id', ...canManage, validate(deleteFamilySchema), familyController.deleteFamily);
 router.put('/subfamilies/:id', ...canManage, validate(updateSubFamilySchema), familyController.updateSubFamily);
+router.post('/subfamilies/:id/products', ...canManage, validate(productIdsSchema), familyController.assignProducts);
+router.delete('/subfamilies/:id/products', ...canManage, validate(productIdsSchema), familyController.removeProducts);
 router.delete('/subfamilies/:id', ...canManage, validate(deleteSubFamilySchema), familyController.deleteSubFamily);
 router.get('/:slug', familyController.getFamily);
 

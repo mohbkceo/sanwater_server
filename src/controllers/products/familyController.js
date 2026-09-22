@@ -6,10 +6,15 @@ const Product = require('../../models/product.model');
 const User = require('../../models/user.model');
 const CostumeException = require('../../utils/CostumeException');
 const errorHandler = require('../../utils/error.middleware');
-const { logActivity } = require('../../utils/logger');
+const { logActivity, logUpdateActivity } = require('../../utils/logger');
+const { buildEntityDetails } = require('../../utils/audit');
 const { comparePassword } = require('../../utils/Password');
 const returnResponse = require('../../utils/responseHandler');
-const { getFamilyTree } = require('../../services/taxonomy.service');
+const {
+  assignProductsToSubFamily,
+  getFamilyTree,
+  removeProductsFromSubFamily,
+} = require('../../services/taxonomy.service');
 
 function notFound(message) {
   return new CostumeException(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message });
@@ -46,20 +51,22 @@ async function getFamily(req, res) {
 async function createFamily(req, res) {
   try {
     const family = await Family.create({ ...req.body, ...actorFields(req, true) });
-    await logActivity(req, 'CREATE FAMILY', 'Family', family._id, { familyId: family._id, familyName: family.name });
+    await logActivity(req, 'CREATE', 'Family', family._id, buildEntityDetails('Family', family, `Created family ${family.name}`));
     return returnResponse(res, SUCCESS.RESOURCES_CREATED, { family });
   } catch (error) { return errorHandler(res, error); }
 }
 
 async function updateFamily(req, res) {
   try {
+    const before = await Family.findById(req.params.id).lean();
+    if (!before) throw notFound('family_not_found');
     const family = await Family.findByIdAndUpdate(
       req.params.id,
       { ...req.body, ...actorFields(req) },
       { new: true, runValidators: true },
     );
     if (!family) throw notFound('family_not_found');
-    await logActivity(req, 'UPDATE FAMILY', 'Family', family._id, { familyId: family._id, familyName: family.name });
+    await logUpdateActivity(req, 'UPDATE', 'Family', family._id, before, family, `Updated family ${family.name}`);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, { family });
   } catch (error) { return errorHandler(res, error); }
 }
@@ -82,9 +89,7 @@ async function deleteFamily(req, res) {
       );
     }
     await family.deleteOne();
-    await logActivity(req, 'DELETE FAMILY', 'Family', family._id, {
-      familyId: family._id, familyName: family.name, affectedProductCount: 0,
-    });
+    await logActivity(req, 'DELETE', 'Family', family._id, buildEntityDetails('Family', family, `Deleted family ${family.name}`, { deleted: true }));
     return returnResponse(res, SUCCESS.RESOURCES_DELETED);
   } catch (error) { return errorHandler(res, error); }
 }
@@ -98,27 +103,54 @@ async function createSubFamily(req, res) {
       family: family._id,
       ...actorFields(req, true),
     });
-    await logActivity(req, 'CREATE SUB_FAMILY', 'SubFamily', subFamily._id, {
-      familyId: family._id, familyName: family.name,
-      subFamilyId: subFamily._id, subFamilyName: subFamily.name,
-    });
+    await logActivity(req, 'CREATE', 'SubFamily', subFamily._id, buildEntityDetails('SubFamily', { ...subFamily.toObject(), family: { _id: family._id, name: family.name } }, `Created sub family ${subFamily.name}`));
     return returnResponse(res, SUCCESS.RESOURCES_CREATED, { subFamily });
   } catch (error) { return errorHandler(res, error); }
 }
 
 async function updateSubFamily(req, res) {
   try {
+    const before = await SubFamily.findById(req.params.id).populate('family', 'name').lean();
+    if (!before) throw notFound('sub_family_not_found');
     const subFamily = await SubFamily.findByIdAndUpdate(
       req.params.id,
       { ...req.body, ...actorFields(req) },
       { new: true, runValidators: true },
     ).populate('family', 'name');
     if (!subFamily) throw notFound('sub_family_not_found');
-    await logActivity(req, 'UPDATE SUB_FAMILY', 'SubFamily', subFamily._id, {
-      familyId: subFamily.family._id, familyName: subFamily.family.name,
-      subFamilyId: subFamily._id, subFamilyName: subFamily.name,
-    });
+    await logUpdateActivity(req, 'UPDATE', 'SubFamily', subFamily._id, before, subFamily, `Updated sub family ${subFamily.name}`);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, { subFamily });
+  } catch (error) { return errorHandler(res, error); }
+}
+
+async function assignProducts(req, res) {
+  try {
+    const result = await assignProductsToSubFamily(req.params.id, req.body.productIds);
+    await logActivity(req, 'MOVE', 'SubFamily', result.subFamily._id, {
+      summary: `Assigned ${result.assignedCount} product${result.assignedCount === 1 ? '' : 's'} to ${result.subFamily.name}`,
+      entity: { id: result.subFamily._id, name: result.subFamily.name },
+      changedFields: ['products.subFamily'],
+      changes: [{ field: 'products.subFamily', label: 'Sub Family', before: 'Previous assignment', after: result.subFamily.name }],
+      affectedProductCount: result.assignedCount,
+    });
+    return returnResponse(res, SUCCESS.RESOURCES_UPDATED, {
+      assignedCount: result.assignedCount,
+      matchedCount: result.matchedCount,
+    });
+  } catch (error) { return errorHandler(res, error); }
+}
+
+async function removeProducts(req, res) {
+  try {
+    const result = await removeProductsFromSubFamily(req.params.id, req.body.productIds);
+    await logActivity(req, 'MOVE', 'SubFamily', result.subFamily._id, {
+      summary: `Removed ${result.removedCount} product${result.removedCount === 1 ? '' : 's'} from ${result.subFamily.name}`,
+      entity: { id: result.subFamily._id, name: result.subFamily.name },
+      changedFields: ['products.subFamily'],
+      changes: [{ field: 'products.subFamily', label: 'Sub Family', before: result.subFamily.name, after: 'Unassigned' }],
+      affectedProductCount: result.removedCount,
+    });
+    return returnResponse(res, SUCCESS.RESOURCES_UPDATED, { removedCount: result.removedCount });
   } catch (error) { return errorHandler(res, error); }
 }
 
@@ -175,22 +207,18 @@ async function deleteSubFamily(req, res) {
       } finally {
         await session.endSession();
       }
-      await logActivity(req, 'MOVE PRODUCTS BETWEEN SUB_FAMILIES', 'SubFamily', source._id, {
-        familyId: target.family, subFamilyId: target._id, subFamilyName: target.name, affectedProductCount,
-      });
+      await logActivity(req, 'MOVE', 'SubFamily', source._id, { summary: `Moved ${affectedProductCount} products from ${source.name} to ${target.name}`, entity: { id: source._id, name: source.name, destination: target.name }, changedFields: ['products.subFamily'], changes: [{ field: 'products.subFamily', label: 'Sub Family', before: source.name, after: target.name }] });
     } else {
       await source.deleteOne();
     }
 
-    await logActivity(req, 'DELETE SUB_FAMILY', 'SubFamily', source._id, {
-      familyId: source.family._id, familyName: source.family.name,
-      subFamilyId: source._id, subFamilyName: source.name, affectedProductCount,
-    });
+    await logActivity(req, 'DELETE', 'SubFamily', source._id, buildEntityDetails('SubFamily', source, `Deleted sub family ${source.name}`, { deleted: true, affectedProductCount }));
     return returnResponse(res, SUCCESS.RESOURCES_DELETED, { affectedProductCount });
   } catch (error) { return errorHandler(res, error); }
 }
 
 module.exports = {
+  assignProducts, removeProducts,
   createFamily, createSubFamily, deleteFamily, deleteSubFamily,
   getFamilies, getFamily, updateFamily, updateSubFamily,
 };

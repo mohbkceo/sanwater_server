@@ -11,7 +11,6 @@ const familySchema = new mongoose.Schema(
     order: { type: Number, integer: true, default: 0 },
     isActive: { type: Boolean, default: true },
     seo: { type: SeoSchema, default: () => ({}) },
-    legacyKey: { type: String, trim: true, default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },

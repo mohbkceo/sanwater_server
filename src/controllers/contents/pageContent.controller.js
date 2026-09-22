@@ -1,9 +1,10 @@
 const PageContent = require( '../../models/page_content.model');
+const { logActivity, logUpdateActivity } = require('../../utils/logger');
+const { buildEntityDetails } = require('../../utils/audit');
 
 const getPageContent = async (req, res) => {
   try {
     const { slug } = req.params;
-
     const page = await PageContent.findOne({ slug });
 
     if (!page) {
@@ -28,6 +29,7 @@ const getPageContent = async (req, res) => {
 const updatePageContent = async (req, res) => {
   try {
     const { slug } = req.params;
+    const before = await PageContent.findOne({ slug }).lean();
 
     const updatedPage = await PageContent.findOneAndUpdate(
       { slug },
@@ -45,6 +47,9 @@ const updatePageContent = async (req, res) => {
         message: 'Page not found',
       });
     }
+
+    if (before) await logUpdateActivity(req, 'UPDATE', 'PageContent', updatedPage._id, before, updatedPage, `Updated page content ${slug}`);
+    else await logActivity(req, 'CREATE', 'PageContent', updatedPage._id, buildEntityDetails('PageContent', updatedPage, `Created page content ${slug}`));
 
     res.status(200).json({
       success: true,

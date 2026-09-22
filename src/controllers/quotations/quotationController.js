@@ -2,7 +2,7 @@ const Quotation = require('../../models/quotation.model');
 const returnResponse = require('../../utils/responseHandler');
 const { SUCCESS, ERRORS } = require('../../config/messages');
 const CostumeExption = require('../../utils/CostumeException');
-const { logActivity } = require('../../utils/logger');
+const { logUpdateActivity } = require('../../utils/logger');
 
 // Public: a customer (consumer, contractor, dealer, ...) requests a quote
 // for one or more products. No auth required — this is the storefront
@@ -87,6 +87,7 @@ const updateQuotationStatus = async (req, res, next) => {
             throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: 'quotation_not_found' });
         }
 
+        const before = quotation.toObject();
         quotation.status = status;
         quotation.statusHistory.push({
             status,
@@ -96,7 +97,7 @@ const updateQuotationStatus = async (req, res, next) => {
         });
         await quotation.save();
 
-        await logActivity(req, 'UPDATE_STATUS', 'Quotation', quotation._id, { newStatus: status });
+        await logUpdateActivity(req, 'UPDATE', 'Quotation', quotation._id, before, quotation, `Changed quotation status to ${status}`);
 
         return returnResponse(res, SUCCESS.RESOURCES_UPDATED, quotation);
     } catch (err) {
@@ -110,6 +111,8 @@ const assignQuotation = async (req, res, next) => {
         const { id } = req.params;
         const { assignedAdmin } = req.body;
 
+        const before = await Quotation.findById(id).lean();
+        if (!before) throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: 'quotation_not_found' });
         const quotation = await Quotation.findByIdAndUpdate(
             id,
             { assignedAdmin: assignedAdmin || null },
@@ -120,7 +123,7 @@ const assignQuotation = async (req, res, next) => {
             throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: 'quotation_not_found' });
         }
 
-        await logActivity(req, 'UPDATE', 'Quotation', quotation._id, { assignedAdmin });
+        await logUpdateActivity(req, 'MOVE', 'Quotation', quotation._id, before, quotation, 'Reassigned quotation');
         return returnResponse(res, SUCCESS.RESOURCES_UPDATED, quotation);
     } catch (err) {
         next(err);

@@ -5,16 +5,15 @@ const generateSerialNumber = require("../../utils/serialNumberGenerator");
 const errorHandler = require("../../utils/error.middleware");
 const returnResponse = require("../../utils/responseHandler");
 const { default: mongoose } = require("mongoose");
-const { logActivity } = require("../../utils/logger");
+const { logActivity, logUpdateActivity } = require("../../utils/logger");
+const { buildEntityDetails } = require("../../utils/audit");
 const {
   resolveCatalogFilter,
-  resolveSubFamilyAssignment,
 } = require("../../services/taxonomy.service");
 
 async function createProduct(req, res) {
   try {
     const {
-      subFamily,
       tags,
       name,
       gallery,
@@ -54,10 +53,10 @@ async function createProduct(req, res) {
       );
     }
 
-    const taxonomy = await resolveSubFamilyAssignment(subFamily);
     const product = new Product({
       author,
-      ...taxonomy,
+      family: null,
+      subFamily: null,
       name,
       serialNumber,
       tags,
@@ -83,7 +82,7 @@ async function createProduct(req, res) {
     });
 
     await product.save();
-    await logActivity(req, "CREATE", "Product", serialNumber, { name });
+    await logActivity(req, "CREATE", "Product", serialNumber, buildEntityDetails('Product', product, `Created product ${product.name || serialNumber}`));
 
     return returnResponse(res, SUCCESS.RESOURCES_CREATED, product);
   } catch (error) {
@@ -111,10 +110,14 @@ async function getProducts(req, res) {
       lastId,
       sortBy,
       sortOrder,
+      assignment,
+      page,
+      limit: requestedLimit,
     } = req.query;
 
     const isAdmin = Boolean(req.catalogAdmin);
-    const limit = isAdmin ? 1000 : Math.min(Number(max) || 15, 100);
+    const limit = Math.min(Math.max(Number(requestedLimit || max) || (isAdmin ? 50 : 15), 1), 100);
+    const currentPage = isAdmin ? Math.max(Number(page) || 1, 1) : 1;
 
     const query = {};
 
@@ -142,7 +145,16 @@ async function getProducts(req, res) {
       query.$or = [
         { name: { $regex: safe, $options: "i" } },
         { productId: { $regex: safe, $options: "i" } },
+        { serialNumber: { $regex: safe, $options: "i" } },
       ];
+    }
+
+    if (isAdmin && assignment === 'unassigned') {
+      query.$and = [...(query.$and || []), {
+        $or: [{ subFamily: null }, { subFamily: { $exists: false } }],
+      }];
+    } else if (isAdmin && assignment === 'assigned') {
+      query.$and = [...(query.$and || []), { subFamily: { $exists: true, $ne: null } }];
     }
 
     Object.assign(query, await resolveCatalogFilter({
@@ -179,18 +191,32 @@ async function getProducts(req, res) {
       sort._id = -1;
     }
 
-    const products = await Product.find(query)
+    const findQuery = Product.find(query)
       .populate('family', 'name slug isActive')
       .populate('subFamily', 'name slug family isActive')
       .sort(sort)
-      .limit(limit)
-      .lean();
+      .limit(limit);
+    if (isAdmin) findQuery.skip((currentPage - 1) * limit);
+    const [products, totalCount] = await Promise.all([
+      findQuery.lean(),
+      isAdmin ? Product.countDocuments(query) : Promise.resolve(null),
+    ]);
+    const totalPages = isAdmin ? Math.max(Math.ceil(totalCount / limit), 1) : undefined;
 
     return returnResponse(res, SUCCESS.RESOURCES_FOUND, {
       products,
       count: products.length,
-      hasMore: products.length === limit,
-      nextLastId: products.length ? products[products.length - 1]._id : null,
+      ...(isAdmin ? {
+        totalCount,
+        page: currentPage,
+        limit,
+        totalPages,
+        hasMore: currentPage < totalPages,
+        nextLastId: null,
+      } : {
+        hasMore: products.length === limit,
+        nextLastId: products.length ? products[products.length - 1]._id : null,
+      }),
     });
   } catch (error) {
     errorHandler(res, error);
@@ -235,7 +261,6 @@ async function updateProduct(req, res) {
   try {
     const { serialNumber } = req.params;
     const {
-      subFamily,
       tags,
       productVariants,
       gallery,
@@ -286,10 +311,10 @@ async function updateProduct(req, res) {
       Object.entries(candidateUpdates).filter(([, value]) => value !== undefined),
     );
 
-    if (subFamily !== undefined) {
-      Object.assign(updateData, await resolveSubFamilyAssignment(subFamily));
+    const before = await Product.findOne({ serialNumber }).populate('family', 'name slug').populate('subFamily', 'name slug family');
+    if (!before) {
+      throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` });
     }
-
     const product = await Product.findOneAndUpdate(
       { serialNumber },
       updateData,
@@ -305,10 +330,7 @@ async function updateProduct(req, res) {
       );
     }
 
-    await logActivity(req, "UPDATE", "Product", serialNumber, {
-      name,
-      isActive: product.isActive,
-    });
+    await logUpdateActivity(req, "UPDATE", "Product", serialNumber, before, product, `Updated product ${product.name || serialNumber}`);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, product);
   } catch (error) {
     errorHandler(res, error);
@@ -330,7 +352,7 @@ async function deleteProduct(req, res) {
       );
     }
 
-    await logActivity(req, "DELETE", "Product", serialNumber);
+    await logActivity(req, "DELETE", "Product", serialNumber, buildEntityDetails('Product', product, `Deleted product ${product.name || serialNumber}`, { deleted: true }));
     return returnResponse(res, SUCCESS.RESOURCES_DELETED);
   } catch (error) {
     errorHandler(res, error);

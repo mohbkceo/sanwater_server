@@ -11,7 +11,6 @@ const productFields = {
     name: JOI.string().min(1).max(150).optional().allow(null, ''),
     productId: JOI.string().trim().min(1).max(50),
     serialNumber: JOI.string().optional(),
-    subFamily: JOI.string().hex().length(24),
     isActive: JOI.boolean().optional(),
     isEcommerce: JOI.boolean().optional(),
     tags: JOI.array().items(JOI.string()).max(20).optional(),
@@ -42,10 +41,6 @@ const productFields = {
 
 const createProductSchema = JOI.object({
     ...productFields,
-    subFamily: productFields.subFamily.required().messages({
-        'string.empty': 'Sub Family is required for catalog placement',
-        'any.required': 'Sub Family is required for catalog placement',
-    }),
     productId: productFields.productId.required().messages({
         'any.required': 'Product ID is required',
     }),

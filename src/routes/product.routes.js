@@ -10,11 +10,11 @@ const {
 } = require('../middlewares/validators/schemas/productValidator');
 
 router.post('/', authSanWater, authorize(PERMISSIONS.PRODUCTS.MANAGE), validate(createProductSchema), productController.createProduct);
-router.get('/admin', authSanWater, authorize(PERMISSIONS.PRODUCTS.VIEW), (req, res) => {
+router.get('/admin', authSanWater, authorize([PERMISSIONS.PRODUCTS.VIEW, PERMISSIONS.PRODUCTS.MANAGE]), (req, res) => {
   req.catalogAdmin = true;
   return productController.getProducts(req, res);
 });
-router.get('/admin/:serialNumber', authSanWater, authorize(PERMISSIONS.PRODUCTS.VIEW), (req, res) => {
+router.get('/admin/:serialNumber', authSanWater, authorize([PERMISSIONS.PRODUCTS.VIEW, PERMISSIONS.PRODUCTS.MANAGE]), (req, res) => {
   req.catalogAdmin = true;
   return productController.getProduct(req, res);
 });

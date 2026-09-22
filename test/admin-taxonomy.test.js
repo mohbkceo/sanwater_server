@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const mongoose = require('mongoose');
 
@@ -6,12 +8,14 @@ const Family = require('../src/models/family.model');
 const SubFamily = require('../src/models/subFamily.model');
 const Product = require('../src/models/product.model');
 const slugify = require('../src/utils/slugify');
-const { getFamilyTree, resolveSubFamilyAssignment } = require('../src/services/taxonomy.service');
+const {
+  assignProductsToSubFamily, getFamilyTree, removeProductsFromSubFamily, resolveSubFamilyAssignment,
+} = require('../src/services/taxonomy.service');
 const {
   createProductSchema, updateProductSchema,
 } = require('../src/middlewares/validators/schemas/productValidator');
 const {
-  createFamilySchema, createSubFamilySchema, deleteFamilySchema, deleteSubFamilySchema,
+  createFamilySchema, createSubFamilySchema, deleteFamilySchema, deleteSubFamilySchema, productIdsSchema,
 } = require('../src/middlewares/validators/schemas/familyValidator');
 
 const familyId = new mongoose.Types.ObjectId();
@@ -31,13 +35,20 @@ test('Family and SubFamily schemas require persisted hierarchy fields', () => {
   assert.ok(new SubFamily({ name: 'Orphan', slug: 'orphan' }).validateSync().errors.family);
 });
 
-test('Product requires ObjectId Family and Sub Family references', () => {
+test('Product can exist without a Family or Sub Family', () => {
   const product = new Product({
     author: 'admin@example.com', name: 'Mixer', productId: 'ZZ999', serialNumber: 'product-test',
-    family: familyId, subFamily: subFamilyId,
   });
   assert.equal(product.validateSync(), undefined);
-  assert.ok(new Product({ author: 'a', productId: 'LA100', serialNumber: 'product-orphan' }).validateSync().errors.subFamily);
+  assert.equal(product.family, null);
+  assert.equal(product.subFamily, null);
+});
+
+test('empty Families and Sub Families are valid', () => {
+  const family = new Family({ name: 'Empty Family', slug: 'empty-family' });
+  const subFamily = new SubFamily({ name: 'Empty Sub Family', slug: 'empty-sub-family', family: familyId });
+  assert.equal(family.validateSync(), undefined);
+  assert.equal(subFamily.validateSync(), undefined);
 });
 
 test('changing Product ID never changes taxonomy assignment', () => {
@@ -53,6 +64,7 @@ test('changing Product ID never changes taxonomy assignment', () => {
 function thenableQuery(value) {
   return {
     populate() { return this; },
+    select() { return this; },
     session() { return this; },
     then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); },
   };
@@ -113,13 +125,65 @@ test('public hierarchy queries only active entities while admin includes inactiv
   assert.equal('isActive' in subFamilyQuery, false);
 });
 
-test('Product API accepts only Sub Family assignment and rejects browser Family', () => {
-  const valid = createProductSchema.validate({ productId: 'X', subFamily: String(subFamilyId) });
+test('Product API creates and updates products without taxonomy fields', () => {
+  const valid = createProductSchema.validate({ productId: 'X' });
   assert.equal(valid.error, undefined);
-  assert.ok(createProductSchema.validate({ productId: 'LA100' }).error);
-  assert.ok(createProductSchema.validate({ productId: 'LA100', subFamily: String(subFamilyId), family: String(familyId) }).error);
+  assert.equal(createProductSchema.validate({ productId: 'LA100' }).error, undefined);
+  assert.ok(createProductSchema.validate({ productId: 'LA100', subFamily: String(subFamilyId) }).error);
+  assert.ok(createProductSchema.validate({ productId: 'LA100', family: String(familyId) }).error);
   assert.equal(updateProductSchema.validate({ productId: 'ZZ999' }).error, undefined);
-  assert.equal(updateProductSchema.validate({ subFamily: String(subFamilyId) }).error, undefined);
+  assert.ok(updateProductSchema.validate({ subFamily: String(subFamilyId) }).error);
+});
+
+test('bulk assignment sets both Sub Family and its parent Family, including moves', async (t) => {
+  const otherFamilyId = new mongoose.Types.ObjectId();
+  const productIds = [new mongoose.Types.ObjectId(), new mongoose.Types.ObjectId()];
+  let update;
+  t.mock.method(SubFamily, 'findById', () => thenableQuery({ _id: subFamilyId, family: otherFamilyId, name: 'Kitchen' }));
+  t.mock.method(Product, 'countDocuments', () => Promise.resolve(productIds.length));
+  t.mock.method(Product, 'updateMany', (query, change) => {
+    update = { query, change };
+    return Promise.resolve({ matchedCount: 2, modifiedCount: 2 });
+  });
+
+  const result = await assignProductsToSubFamily(String(subFamilyId), productIds.map(String));
+  assert.equal(result.assignedCount, 2);
+  assert.deepEqual(update.change.$set, { subFamily: subFamilyId, family: otherFamilyId });
+  assert.deepEqual(update.query._id.$in, productIds.map(String));
+});
+
+test('bulk removal only unassigns products in the selected Sub Family', async (t) => {
+  const productIds = [new mongoose.Types.ObjectId(), new mongoose.Types.ObjectId()];
+  let update;
+  t.mock.method(SubFamily, 'findById', () => thenableQuery({ _id: subFamilyId, family: familyId, name: 'Lavabo' }));
+  t.mock.method(Product, 'countDocuments', () => Promise.resolve(productIds.length));
+  t.mock.method(Product, 'updateMany', (query, change) => {
+    update = { query, change };
+    return Promise.resolve({ matchedCount: 1, modifiedCount: 1 });
+  });
+
+  const result = await removeProductsFromSubFamily(String(subFamilyId), productIds.map(String));
+  assert.equal(result.removedCount, 1);
+  assert.equal(String(update.query.subFamily), String(subFamilyId));
+  assert.deepEqual(update.change.$set, { subFamily: null, family: null });
+});
+
+test('bulk assignment rejects missing Products instead of partially assigning', async (t) => {
+  const productIds = [new mongoose.Types.ObjectId(), new mongoose.Types.ObjectId()];
+  t.mock.method(SubFamily, 'findById', () => thenableQuery({ _id: subFamilyId, family: familyId, name: 'Lavabo' }));
+  t.mock.method(Product, 'countDocuments', () => Promise.resolve(1));
+  await assert.rejects(() => assignProductsToSubFamily(String(subFamilyId), productIds.map(String)), /Resource Invalid/);
+});
+
+test('runtime taxonomy contains no Product ID prefix derivation', () => {
+  const runtimeFiles = [
+    '../src/controllers/products/productControler.js',
+    '../src/controllers/products/familyController.js',
+    '../src/services/taxonomy.service.js',
+    '../src/models/product.model.js',
+  ].map((file) => fs.readFileSync(path.join(__dirname, file), 'utf8')).join('\n');
+  assert.doesNotMatch(runtimeFiles, /deriveSubFamily/i);
+  assert.doesNotMatch(runtimeFiles, /productId\s*\.\s*(?:slice|substring)\s*\(\s*0\s*,\s*2/i);
 });
 
 test('taxonomy validators cover slugs, visibility, order, and password deletion', () => {
@@ -129,4 +193,7 @@ test('taxonomy validators cover slugs, visibility, order, and password deletion'
   assert.ok(deleteFamilySchema.validate({}).error);
   assert.equal(deleteFamilySchema.validate({ password: 'secret' }).error, undefined);
   assert.ok(deleteSubFamilySchema.validate({ password: 'secret', replacementSubFamilyId: 'bad-id' }).error);
+  assert.equal(productIdsSchema.validate({ productIds: [String(subFamilyId)] }).error, undefined);
+  assert.ok(productIdsSchema.validate({ productIds: [] }).error);
+  assert.ok(productIdsSchema.validate({ productIds: [String(subFamilyId), String(subFamilyId)] }).error);
 });

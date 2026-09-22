@@ -10,7 +10,6 @@ const subFamilySchema = new mongoose.Schema(
     image: { type: String, trim: true, default: null },
     order: { type: Number, integer: true, default: 0 },
     isActive: { type: Boolean, default: true },
-    legacyKey: { type: String, trim: true, default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },

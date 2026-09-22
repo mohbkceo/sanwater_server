@@ -23,6 +23,41 @@ async function resolveSubFamilyAssignment(subFamilyId, { activeOnly = false, ses
   return { subFamily: subFamily._id, family: subFamily.family._id };
 }
 
+async function validateBulkAssignment(subFamilyId, productIds) {
+  if (!mongoose.isValidObjectId(subFamilyId)) throw invalidTaxonomy('invalid_sub_family');
+
+  const uniqueProductIds = [...new Set(productIds.map(String))];
+  if (!uniqueProductIds.length || uniqueProductIds.some((id) => !mongoose.isValidObjectId(id))) {
+    throw invalidTaxonomy('invalid_product_ids');
+  }
+
+  const subFamily = await SubFamily.findById(subFamilyId).select('_id family name');
+  if (!subFamily || !subFamily.family) throw invalidTaxonomy('sub_family_not_found');
+
+  const productCount = await Product.countDocuments({ _id: { $in: uniqueProductIds } });
+  if (productCount !== uniqueProductIds.length) throw invalidTaxonomy('one_or_more_products_not_found');
+
+  return { subFamily, productIds: uniqueProductIds };
+}
+
+async function assignProductsToSubFamily(subFamilyId, productIds) {
+  const validated = await validateBulkAssignment(subFamilyId, productIds);
+  const result = await Product.updateMany(
+    { _id: { $in: validated.productIds } },
+    { $set: { subFamily: validated.subFamily._id, family: validated.subFamily.family } },
+  );
+  return { subFamily: validated.subFamily, matchedCount: result.matchedCount, assignedCount: result.modifiedCount };
+}
+
+async function removeProductsFromSubFamily(subFamilyId, productIds) {
+  const validated = await validateBulkAssignment(subFamilyId, productIds);
+  const result = await Product.updateMany(
+    { _id: { $in: validated.productIds }, subFamily: validated.subFamily._id },
+    { $set: { subFamily: null, family: null } },
+  );
+  return { subFamily: validated.subFamily, matchedCount: result.matchedCount, removedCount: result.modifiedCount };
+}
+
 async function resolveCatalogFilter({ family, subFamily, publicOnly = false } = {}) {
   const filter = {};
   let familyDoc = null;
@@ -126,4 +161,10 @@ async function getFamilyTree({ admin = false, slug } = {}) {
   }));
 }
 
-module.exports = { getFamilyTree, resolveCatalogFilter, resolveSubFamilyAssignment };
+module.exports = {
+  assignProductsToSubFamily,
+  getFamilyTree,
+  removeProductsFromSubFamily,
+  resolveCatalogFilter,
+  resolveSubFamilyAssignment,
+};

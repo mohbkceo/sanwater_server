@@ -5,6 +5,7 @@ const activityLogSchema = new mongoose.Schema({
   action: { type: String, enum: ['CREATE', 'UPDATE', 'DELETE', 'MOVE', 'LOGIN', 'SECURITY'], required: true },
   target: { type: String, required: true }, // e.g., 'Product', 'User', 'Hiring'
   targetId: { type: String },
+  eventName: { type: String, index: true },
   details: { type: mongoose.Schema.Types.Mixed },
   ip: { type: String },
   userAgent: { type: String },
@@ -14,5 +15,6 @@ activityLogSchema.index({ createdAt: -1 });
 activityLogSchema.index({ userId: 1, createdAt: -1 });
 activityLogSchema.index({ action: 1, target: 1, createdAt: -1 });
 activityLogSchema.index({ target: 1, targetId: 1, createdAt: -1 });
+activityLogSchema.index({ eventName: 1, createdAt: -1 });
 
 module.exports = mongoose.model('ActivityLog', activityLogSchema);

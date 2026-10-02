@@ -30,6 +30,11 @@ function resolvePeriod({ from, to, now = new Date() } = {}) {
   }
 
   const durationMs = currentTo.getTime() - currentFrom.getTime() + 1;
+  if (durationMs > 366 * DAY_MS) {
+    const error = new Error('Analytics range cannot exceed 366 days');
+    error.statusCode = 400;
+    throw error;
+  }
   const comparisonTo = new Date(currentFrom.getTime() - 1);
   const comparisonFrom = new Date(comparisonTo.getTime() - durationMs + 1);
   const days = durationMs / DAY_MS;

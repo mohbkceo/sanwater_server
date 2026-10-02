@@ -20,7 +20,7 @@ const StatusHistoryEntry = new mongoose.Schema({
     changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     changedAt: { type: Date, default: Date.now },
     note: { type: String, trim: true, default: null },
-}, { _id: false });
+}, { _id: true });
 
 const QUOTATION_STATUSES = ['submitted', 'under_review', 'quoted', 'negotiation', 'approved', 'rejected', 'closed'];
 const CUSTOMER_TYPES = ['consumer', 'contractor', 'architect', 'designer', 'dealer', 'distributor', 'business'];

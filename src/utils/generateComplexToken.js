@@ -25,6 +25,7 @@ function generateAccessToken(user) {
       uid: user._id?.toString() || user.uid,
       email: user.email || "",
       role: user?.role ?? "user",
+      persona: user?.persona || 'general_admin',
       permissions: user?.permissions || [],
       type: "access",
     },
@@ -40,6 +41,7 @@ function generateRefreshToken(user, period) {
       uid: user._id.toString(),
       type: "refresh",
       role: user?.role,
+      persona: user?.persona || 'general_admin',
       permissions: user?.permissions || [],
     },
     {

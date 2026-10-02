@@ -10,6 +10,7 @@ const CostumeExption = require('../../utils/CostumeException');
 const { logActivity, logUpdateActivity } = require('../../utils/logger');
 const { buildEntityDetails, plain } = require('../../utils/audit');
 const sanitizeNewsHtml = require('../../utils/sanitizeNewsHtml');
+const { emitBusinessEvent } = require('../../services/analytics/tracking');
 
 const EDITABLE_FIELDS = ['title', 'excerpt', 'content', 'coverImage', 'category', 'tags', 'status', 'publishedAt', 'seoTitle', 'seoDescription', 'canonicalUrl', 'isFeatured', 'relatedProducts'];
 const AUTOSAVE_FIELDS = EDITABLE_FIELDS.filter((field) => !['status', 'publishedAt'].includes(field));
@@ -56,6 +57,8 @@ const createNews = async (req, res, next) => {
     await news.save();
     await createRevision(news, req.user.uid, news.status === 'published' ? 'publish' : 'manual_save');
     await logActivity(req, 'CREATE', 'News', news._id, buildEntityDetails('News', news, `Created article ${news.title}`));
+    await emitBusinessEvent('article_created', 'article', news._id, 'created', {}, { userId: req.user.uid }).catch(() => null);
+    if (news.status === 'published') await emitBusinessEvent('article_published', 'article', news._id, 'created', {}, { userId: req.user.uid }).catch(() => null);
     return returnResponse(res, SUCCESS.RESOURCES_CREATED, news);
   } catch (err) { next(err); }
 };
@@ -125,6 +128,10 @@ const updateNews = async (req, res, next) => {
     const reason = news.status === 'published' && previousStatus !== 'published' ? 'publish' : 'manual_save';
     await createRevision(news, req.user.uid, reason);
     await logUpdateActivity(req, 'UPDATE', 'News', news._id, before, news, `Updated article ${news.title}`);
+    if (before.status !== news.status) {
+      const eventName = { review: 'article_submitted_for_review', published: 'article_published', archived: 'article_archived' }[news.status];
+      if (eventName) await emitBusinessEvent(eventName, 'article', news._id, news.updatedAt.getTime(), {}, { userId: req.user.uid }).catch(() => null);
+    }
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, news);
   } catch (err) { next(err); }
 };
@@ -167,6 +174,7 @@ const restoreRevision = async (req, res, next) => {
     await news.save();
     await createRevision(news, req.user.uid, 'restore');
     await logUpdateActivity(req, 'UPDATE', 'News', news._id, before, news, `Restored article ${news.title} to revision ${revision.version}`);
+    await emitBusinessEvent('article_restored', 'article', news._id, `${news.updatedAt.getTime()}:${revision.version}`, {}, { userId: req.user.uid }).catch(() => null);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, news);
   } catch (err) { next(err); }
 };
@@ -184,6 +192,7 @@ const bulkUpdateNews = async (req, res, next) => {
       await createRevision(article, req.user.uid, action === 'publish' ? 'publish' : 'manual_save');
     }
     for (const article of articles) await logUpdateActivity(req, 'UPDATE', 'News', article._id, beforeById.get(String(article._id)), article, `Bulk ${action} article ${article.title}`);
+    for (const article of articles) if (action === 'publish' && beforeById.get(String(article._id))?.status !== 'published') await emitBusinessEvent('article_published', 'article', article._id, article.updatedAt.getTime(), {}, { userId: req.user.uid }).catch(() => null);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, { updated: articles.length });
   } catch (err) { next(err); }
 };
@@ -197,6 +206,7 @@ const deleteNews = async (req, res, next) => {
     await news.save();
     await createRevision(news, req.user.uid, 'manual_save');
     await logUpdateActivity(req, 'UPDATE', 'News', news._id, before, news, `Archived article ${news.title}`);
+    if (before.status !== 'archived') await emitBusinessEvent('article_archived', 'article', news._id, news.updatedAt.getTime(), {}, { userId: req.user.uid }).catch(() => null);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, news);
   } catch (err) { next(err); }
 };

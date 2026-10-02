@@ -6,7 +6,8 @@ const errorHandler = require("../../utils/error.middleware");
 const returnResponse = require("../../utils/responseHandler");
 const { default: mongoose } = require("mongoose");
 const { logActivity, logUpdateActivity } = require("../../utils/logger");
-const { buildEntityDetails } = require("../../utils/audit");
+const { buildEntityDetails, diff } = require("../../utils/audit");
+const { emitBusinessEvent } = require('../../services/analytics/tracking');
 const {
   resolveCatalogFilter,
 } = require("../../services/taxonomy.service");
@@ -83,6 +84,7 @@ async function createProduct(req, res) {
 
     await product.save();
     await logActivity(req, "CREATE", "Product", serialNumber, buildEntityDetails('Product', product, `Created product ${product.name || serialNumber}`));
+    await emitBusinessEvent('product_created', 'product', product._id, 'created', {}, { userId: req.user.uid }).catch(() => null);
 
     return returnResponse(res, SUCCESS.RESOURCES_CREATED, product);
   } catch (error) {
@@ -331,6 +333,11 @@ async function updateProduct(req, res) {
     }
 
     await logUpdateActivity(req, "UPDATE", "Product", serialNumber, before, product, `Updated product ${product.name || serialNumber}`);
+    const version = product.updatedAt?.getTime() || Date.now();
+    if (diff(before, product).length) await emitBusinessEvent('product_updated', 'product', product._id, version, {}, { userId: req.user.uid }).catch(() => null);
+    if (before.status !== product.status && product.status === 'published') await emitBusinessEvent('product_published', 'product', product._id, version, {}, { userId: req.user.uid }).catch(() => null);
+    if (before.status !== product.status && product.status === 'archived') await emitBusinessEvent('product_archived', 'product', product._id, version, {}, { userId: req.user.uid }).catch(() => null);
+    if (before.prices?.productPrice !== product.prices?.productPrice) await emitBusinessEvent('product_price_changed', 'product', product._id, version, { before: before.prices?.productPrice, after: product.prices?.productPrice }, { userId: req.user.uid }).catch(() => null);
     return returnResponse(res, SUCCESS.RESOURCES_UPDATED, product);
   } catch (error) {
     errorHandler(res, error);

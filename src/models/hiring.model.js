@@ -9,6 +9,7 @@ const hiringSchema = new mongoose.Schema({
   benefits: { type: [String] },
   status: { type: String, enum: ['published', 'draft', 'closed'], default: 'draft' },
   publishDate: { type: Date, default: Date.now },
+  deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Hiring', hiringSchema);

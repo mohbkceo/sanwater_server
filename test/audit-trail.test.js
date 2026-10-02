@@ -75,7 +75,7 @@ test('activity log endpoint applies all supported filters and safe pagination', 
   User.find = () => ({ select() { return this; }, sort() { return this; }, lean: async () => [] });
   try {
     const response = { statusCode: null, body: null, status(code) { this.statusCode = code; return this; }, json(value) { this.body = value; return value; } };
-    await getLogs({ query: { page: '3', limit: '500', userId: 'user-1', action: 'UPDATE FAMILY', target: 'Family', targetId: 'family-1', search: 'Mixer (blue)', from: '2026-01-01', to: '2026-01-31' } }, response, (error) => { throw error; });
+    await getLogs({ query: { page: '3', limit: '500', userId: 'user-1', action: 'UPDATE FAMILY', target: 'Family', targetId: 'family-1', eventName: 'product.price_changed', search: 'Mixer (blue)', from: '2026-01-01', to: '2026-01-31' } }, response, (error) => { throw error; });
     assert.equal(capturedSkip, 200);
     assert.equal(response.body.data.limit, 100);
     assert.equal(response.body.data.totalPages, 1);
@@ -84,6 +84,7 @@ test('activity log endpoint applies all supported filters and safe pagination', 
     assert.ok(capturedQuery.action.$in.includes('UPDATE FAMILY'));
     assert.equal(capturedQuery.target, 'Family');
     assert.equal(capturedQuery.targetId, 'family-1');
+    assert.equal(capturedQuery.eventName, 'product.price_changed');
     assert.ok(capturedQuery.createdAt.$gte instanceof Date);
     assert.equal(capturedQuery.createdAt.$lte.toISOString(), '2026-01-31T23:59:59.999Z');
     assert.match(capturedQuery.$or[0].targetId.source, /Mixer/);

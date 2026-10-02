@@ -197,6 +197,7 @@ async function getSecurityInfo(req, res) {
 
     const securityInfo = {
       role: user.role,
+      persona: user.persona || 'general_admin',
       permissions: user.permissions || [],
       createdWith: user.createdWith || null,
       authKey: user.authKey || null,

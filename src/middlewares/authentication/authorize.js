@@ -1,6 +1,14 @@
 const CostumeException = require('../../utils/CostumeException');
 const { ERRORS } = require('../../config/messages');
 const { ROLES } = require('../../config/permissions');
+const ANALYTICS_LEGACY_READ = new Set([
+  'analytics.overview.view', 'analytics.marketing.view', 'analytics.products.view',
+  'analytics.sales.view', 'analytics.hiring.view', 'analytics.content.view',
+]);
+function grants(userPermissions, permission) {
+  return userPermissions.includes(permission) ||
+    (process.env.ANALYTICS_LEGACY_READ_FALLBACK !== 'false' && ANALYTICS_LEGACY_READ.has(permission) && userPermissions.includes('analytics.view'));
+}
 
 /**
  * Middleware to authorize user based on permissions.
@@ -29,8 +37,8 @@ const authorize = (requiredPermissions = [], requireAll = false) => {
     const userPermissions = user.permissions || [];
 
     const hasPermission = requireAll
-      ? permissions.every(p => userPermissions.includes(p))
-      : permissions.some(p => userPermissions.includes(p));
+      ? permissions.every(p => grants(userPermissions, p))
+      : permissions.some(p => grants(userPermissions, p));
 
     if (!hasPermission) {
       throw new CostumeException(ERRORS.FORBIDDEN.msg, ERRORS.FORBIDDEN.statusCode);
@@ -41,3 +49,4 @@ const authorize = (requiredPermissions = [], requireAll = false) => {
 };
 
 module.exports = authorize;
+module.exports.grants = grants;

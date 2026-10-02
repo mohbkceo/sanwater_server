@@ -42,7 +42,7 @@ router.put('/security/password', authSanWater, changePassword);
 
 router.put('/:id/permissions', authSanWater, authorize(PERMISSIONS.USERS.MANAGE_PERMISSIONS), async (req, res, next) => {
   try {
-    const { permissions, role } = req.body;
+    const { permissions, role, persona } = req.body;
     const { id } = req.params;
     const { uid } = req.user;
 
@@ -67,6 +67,11 @@ router.put('/:id/permissions', authSanWater, authorize(PERMISSIONS.USERS.MANAGE_
       throw new CostumeExption(ERRORS.INVALID.msg, ERRORS.INVALID.statusCode, ERRORS.INVALID.key, { message: 'Only the admin role can be assigned' });
     }
     if (role !== undefined) updateData.role = role;
+    if (persona !== undefined) {
+      const { PERSONAS } = require('../config/analytics');
+      if (!PERSONAS.includes(persona)) throw new CostumeExption(ERRORS.INVALID.msg, ERRORS.INVALID.statusCode, ERRORS.INVALID.key, { message: 'Invalid persona' });
+      updateData.persona = persona;
+    }
 
     const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true }).select('-password');
     await logUpdateActivity(req, 'SECURITY', 'User', user._id, user, updatedUser, `Changed permissions for ${user.fullName || user.email}`);

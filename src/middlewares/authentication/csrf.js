@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+const crypto = require("crypto");
 
 // Double-submit CSRF protection.
 //
@@ -11,14 +11,15 @@ const crypto = require('crypto');
 // state-changing request. A cross-site attacker can make the browser send
 // the *cookie* automatically, but same-origin policy stops them reading its
 // value to put it in the header, so the two won't match.
-const CSRF_COOKIE = 'csrf_token';
+
+const CSRF_COOKIE = "csrf_token";
 
 function issueCsrfCookie(res, maxAge) {
   const token = crypto.randomUUID();
   res.cookie(CSRF_COOKIE, token, {
     httpOnly: false,
     secure: true,
-    sameSite: 'none',
+    sameSite: "none",
     maxAge: maxAge || 15 * 60 * 1000,
   });
   return token;
@@ -31,20 +32,22 @@ function issueCsrfCookie(res, maxAge) {
 // the request header.
 function getCsrfToken(req, res) {
   const csrfToken = issueCsrfCookie(res);
-  res.set('Cache-Control', 'no-store');
+  res.set("Cache-Control", "no-store");
   return res.status(200).json({ success: true, csrfToken });
 }
 
-const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 function csrfProtection(req, res, next) {
   if (SAFE_METHODS.has(req.method)) return next();
 
   const cookieToken = req.cookies?.[CSRF_COOKIE];
-  const headerToken = req.headers['x-csrf-token'];
+  const headerToken = req.headers["x-csrf-token"];
 
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {
-    return res.status(403).json({ success: false, message: 'Invalid or missing CSRF token' });
+    return res
+      .status(403)
+      .json({ success: false, message: "Invalid or missing CSRF token" });
   }
   next();
 }

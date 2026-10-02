@@ -265,6 +265,7 @@ async function getRecentEvents({ from, to, limit = 10 }) {
   };
 
   return Event.find(match)
+    .select('type path source ts')
     .sort({ ts: -1 })
     .limit(limit)
     .lean();

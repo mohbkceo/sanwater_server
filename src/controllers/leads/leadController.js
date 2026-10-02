@@ -7,6 +7,8 @@ const returnResponse = require('../../utils/responseHandler');
 const { SUCCESS, ERRORS } = require('../../config/messages');
 const CostumeExption = require('../../utils/CostumeException');
 const { logActivity, logUpdateActivity } = require('../../utils/logger');
+const AnalyticsSession = require('../../models/analyticsSession.model');
+const { emitBusinessEvent, unsign, SESSION_COOKIE, normalizePath } = require('../../services/analytics/tracking');
 
 const clean = (value) => {
   if (value === undefined || value === null || value === '') return null;
@@ -48,23 +50,17 @@ const createLead = async (req, res, next) => {
     const product = await Product.findOne(productQuery).select('_id name productId serialNumber prices.productPrice');
     if (!product) throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: 'product_not_found' });
 
-    const requestedSessionId = clean(attribution.sessionId);
-    const requestedVisitorId = clean(attribution.visitorId);
-    const identityFilters = [];
-    if (requestedSessionId) identityFilters.push({ session_id: requestedSessionId });
-    if (requestedVisitorId) identityFilters.push({ visitor_id: requestedVisitorId });
-    const acquisitionEvent = identityFilters.length
-      ? await Event.findOne({ $or: identityFilters }).sort({ ts: 1 }).select('source medium campaign referrer path session_id visitor_id').lean()
-      : null;
-    const referrer = clean(acquisitionEvent?.referrer) || clean(attribution.referrer) || clean(req.get('referer'));
-    const source = clean(acquisitionEvent?.source) || clean(attribution.source) || (!referrer ? 'direct' : null);
+    const signedSessionId = unsign(req.cookies?.[SESSION_COOKIE]);
+    const session = signedSessionId ? await AnalyticsSession.findOne({ sessionId: signedSessionId }).lean() : null;
+    const referrer = session?.acquisition?.referrer || null;
+    const source = session?.acquisition?.source || (session ? session.acquisition?.channel : null);
     const unitPrice = Number(product.prices?.productPrice || 0);
     const lead = await Lead.create({
       fullName: clean(fullName), phone: clean(phone), email: clean(email), company: clean(company), wilaya: clean(wilaya), message: clean(message),
       productId: product._id, productSerialNumber: product.serialNumber, productName: product.name || product.productId || product.serialNumber,
       quantity, estimatedValue: unitPrice > 0 ? unitPrice * quantity : 0,
-      source, medium: clean(acquisitionEvent?.medium) || clean(attribution.medium), campaign: clean(acquisitionEvent?.campaign) || clean(attribution.campaign), referrer,
-      landingPage: clean(acquisitionEvent?.path) || clean(attribution.landingPage), pagePath: clean(attribution.pagePath), visitorId: clean(acquisitionEvent?.visitor_id) || requestedVisitorId, sessionId: clean(acquisitionEvent?.session_id) || requestedSessionId,
+      source, medium: session?.acquisition?.medium || null, campaign: session?.acquisition?.campaign || null, referrer,
+      landingPage: session?.landingPage || null, pagePath: normalizePath(attribution.pagePath), visitorId: session?.visitorId || null, sessionId: session?.sessionId || null,
       statusHistory: [{ previousStatus: null, newStatus: 'new', changedAt: new Date() }],
     });
 
@@ -73,6 +69,7 @@ const createLead = async (req, res, next) => {
       source: lead.source || 'direct', medium: lead.medium, campaign: lead.campaign, path: lead.pagePath,
       referrer: lead.referrer, conversion_name: 'lead_submitted', meta: { lead_id: String(lead._id), product_id: String(product._id), product_serial: product.serialNumber },
     }).catch(() => null);
+    await emitBusinessEvent('lead_created', 'lead', lead._id, 'created', { productId: String(product._id) }, { visitorId: lead.visitorId, sessionId: lead.sessionId }).catch(() => null);
 
     return returnResponse(res, SUCCESS.RESOURCES_CREATED, { id: lead._id, status: lead.status, productName: lead.productName });
   } catch (err) { next(err); }
@@ -160,6 +157,7 @@ const assignLead = async (req, res, next) => {
     lead.assignmentHistory.push({ previousAssignee, newAssignee: assignedTo, changedBy: req.user.uid });
     await lead.save();
     await logUpdateActivity(req, 'MOVE', 'Lead', lead._id, before, lead, `Assigned lead ${lead.fullName}`);
+    await emitBusinessEvent('lead_assigned', 'lead', lead._id, String(lead.assignmentHistory.at(-1)._id), {}, { userId: req.user.uid }).catch(() => null);
     return getLeadById(req, res, next);
   } catch (err) { next(err); }
 };
@@ -185,6 +183,8 @@ const updateStatus = async (req, res, next) => {
     }
     await lead.save();
     await logUpdateActivity(req, 'UPDATE', 'Lead', lead._id, before, lead, `Changed lead ${lead.fullName} status to ${status}`);
+    const eventName = { contacted: 'lead_contacted', qualified: 'lead_qualified', quote_sent: 'quote_sent', won: 'lead_won', lost: 'lead_lost' }[status];
+    if (eventName && previousStatus !== status) await emitBusinessEvent(eventName, 'lead', lead._id, String(lead.statusHistory.at(-1)._id), {}, { userId: req.user.uid, visitorId: lead.visitorId, sessionId: lead.sessionId }).catch(() => null);
     return getLeadById(req, res, next);
   } catch (err) { next(err); }
 };

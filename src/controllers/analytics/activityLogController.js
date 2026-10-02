@@ -6,7 +6,7 @@ const User = require('../../models/user.model');
 
 const getLogs = async (req, res, next) => {
   try {
-    const { page: requestedPage = 1, limit: requestedLimit = 20, userId, action, target, targetId, search, from, to } = req.query;
+    const { page: requestedPage = 1, limit: requestedLimit = 20, userId, action, target, targetId, eventName, search, from, to } = req.query;
     const page = Math.max(1, Number(requestedPage) || 1);
     const limit = Math.min(100, Math.max(1, Number(requestedLimit) || 20));
     const query = {};
@@ -24,6 +24,7 @@ const getLogs = async (req, res, next) => {
     }
     if (target) query.target = target;
     if (targetId) query.targetId = String(targetId);
+    if (eventName) query.eventName = String(eventName).slice(0, 100);
     if (from || to) {
       query.createdAt = {};
       if (from && !Number.isNaN(Date.parse(from))) query.createdAt.$gte = new Date(from);

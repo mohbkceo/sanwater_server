@@ -2,6 +2,18 @@ const ActivityLog = require('../models/activityLog.model');
 const { redact, buildUpdateDetails } = require('./audit');
 
 const VALID_ACTIONS = new Set(['CREATE', 'UPDATE', 'DELETE', 'MOVE', 'LOGIN', 'SECURITY']);
+function deriveEventName(target, action, details) {
+  const domain = { Product: 'product', Lead: 'lead', Quotation: 'quotation', Hiring: 'job', News: 'article', User: 'admin_user' }[target] || String(target || 'system').toLowerCase();
+  const fields = new Set(details?.changedFields || []);
+  if (domain === 'product' && (fields.has('prices.productPrice') || fields.has('prices'))) return 'product.price_changed';
+  if (domain === 'product' && fields.has('status')) return `product.${details.changes?.find(c => c.field === 'status')?.after || 'status_changed'}`;
+  if (domain === 'lead' && fields.has('status')) return `lead.${details.changes?.find(c => c.field === 'status')?.after || 'status_changed'}`;
+  if (domain === 'quotation' && fields.has('status')) return `quotation.${details.changes?.find(c => c.field === 'status')?.after || 'status_changed'}`;
+  if (domain === 'job' && fields.has('status')) return `job.${details.changes?.find(c => c.field === 'status')?.after || 'status_changed'}`;
+  if (domain === 'article' && fields.has('status')) return `article.${details.changes?.find(c => c.field === 'status')?.after || 'status_changed'}`;
+  if (domain === 'application' && fields.has('stage')) return 'application.stage_changed';
+  return `${domain}.${normalizeAction(action).toLowerCase()}`;
+}
 
 function normalizeAction(action = '') {
   const value = String(action).trim().toUpperCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
@@ -33,6 +45,7 @@ const logActivity = async (req, action, target, targetId, details) => {
       action: normalizeAction(action),
       target,
       targetId: targetId == null ? undefined : String(targetId),
+      eventName: deriveEventName(target, action, safeDetails),
       details: safeDetails,
       ip: req.ip || req.headers?.['x-forwarded-for']?.split(',')[0]?.trim(),
       userAgent: req.headers?.['user-agent'],
@@ -48,4 +61,4 @@ const logUpdateActivity = async (req, action, target, targetId, before, after, s
   return logActivity(req, action, target, targetId, details);
 };
 
-module.exports = { logActivity, logUpdateActivity, normalizeAction };
+module.exports = { logActivity, logUpdateActivity, normalizeAction, deriveEventName };

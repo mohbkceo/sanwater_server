@@ -3,6 +3,7 @@ const returnResponse = require('../../utils/responseHandler');
 const { SUCCESS, ERRORS } = require('../../config/messages');
 const CostumeExption = require('../../utils/CostumeException');
 const { logUpdateActivity } = require('../../utils/logger');
+const { emitBusinessEvent } = require('../../services/analytics/tracking');
 
 // Public: a customer (consumer, contractor, dealer, ...) requests a quote
 // for one or more products. No auth required — this is the storefront
@@ -19,6 +20,7 @@ const createQuotation = async (req, res, next) => {
             source: source || null,
             statusHistory: [{ status: 'submitted', changedAt: new Date() }],
         });
+        await emitBusinessEvent('quotation_submitted', 'quotation', quotation._id, 'submitted').catch(() => null);
 
         return returnResponse(res, SUCCESS.RESOURCES_CREATED, {
             id: quotation._id,
@@ -98,6 +100,8 @@ const updateQuotationStatus = async (req, res, next) => {
         await quotation.save();
 
         await logUpdateActivity(req, 'UPDATE', 'Quotation', quotation._id, before, quotation, `Changed quotation status to ${status}`);
+        const eventName = `quotation_${status}`;
+        if (before.status !== status) await emitBusinessEvent(eventName, 'quotation', quotation._id, String(quotation.statusHistory.at(-1)._id), {}, { userId: req.user.uid }).catch(() => null);
 
         return returnResponse(res, SUCCESS.RESOURCES_UPDATED, quotation);
     } catch (err) {
@@ -124,6 +128,7 @@ const assignQuotation = async (req, res, next) => {
         }
 
         await logUpdateActivity(req, 'MOVE', 'Quotation', quotation._id, before, quotation, 'Reassigned quotation');
+        if (String(before.assignedAdmin || '') !== String(quotation.assignedAdmin || '')) await emitBusinessEvent('quotation_assigned', 'quotation', quotation._id, `${quotation.updatedAt.getTime()}`, {}, { userId: req.user.uid }).catch(() => null);
         return returnResponse(res, SUCCESS.RESOURCES_UPDATED, quotation);
     } catch (err) {
         next(err);

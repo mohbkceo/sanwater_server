@@ -3,6 +3,8 @@ const router = express.Router();
 const upload = require("../config/imageCloudinaryConfig");
 const imageHandler = require("../controllers/contents/imageController");
 const hiringController = require("../controllers/contents/hiringController");
+const applicationController = require('../controllers/contents/applicationController');
+const { publicSubmissionLimiter } = require('../middlewares/rateLimit');
 const contactController = require("../controllers/contents/contactController");
 const { authSanWater, authorize } = require("../middlewares");
 const { PERMISSIONS } = require("../config/permissions");
@@ -30,7 +32,13 @@ router.post(
   hiringController.createHiring,
 );
 router.get("/hiring", hiringController.getHiringList);
+router.get('/hiring/admin', authSanWater, authorize(PERMISSIONS.HIRING.VIEW), hiringController.getHiringList);
 router.get("/hiring/:id", hiringController.getHiringById);
+router.post('/hiring/:id/applications', publicSubmissionLimiter, applicationController.submit);
+router.get('/applications', authSanWater, authorize(PERMISSIONS.HIRING.VIEW), applicationController.list);
+router.get('/applications/assignees', authSanWater, authorize(PERMISSIONS.HIRING.VIEW), applicationController.assignees);
+router.get('/applications/:id', authSanWater, authorize(PERMISSIONS.HIRING.VIEW), applicationController.detail);
+router.patch('/applications/:id', authSanWater, authorize(PERMISSIONS.HIRING.MANAGE), applicationController.update);
 router.put(
   "/hiring/:id",
   authSanWater,

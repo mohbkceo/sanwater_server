@@ -5,6 +5,7 @@ const errorHandler = require("../../utils/error.middleware");
 const jwt =require('jsonwebtoken');
 const TokenServices = require("../../services/tokenServices");
 const { issueCsrfCookie } = require("../../middlewares/authentication/csrf");
+const User = require('../../models/user.model');
 
 
 async function refreshTokenValidation(req, res) {
@@ -21,12 +22,9 @@ async function refreshTokenValidation(req, res) {
     if (decoded.type !== 'refresh') {
       throw new CostumeExption(ERRORS.INVALID.msg, ERRORS.INVALID.statusCode)
     }
-    const newAccessToken = generateAccessToken({
-      uid: decoded.uid,
-      role: decoded.role,
-      permissions: decoded.permissions || [],
-      username: decoded.fullName || decoded.username
-    });
+    const user = await User.findById(decoded.uid).select('role permissions persona email').lean();
+    if (!user || !['admin', 'super_admin'].includes(user.role)) throw new CostumeExption(ERRORS.UNAUTHORIZED.msg, ERRORS.UNAUTHORIZED.statusCode);
+    const newAccessToken = generateAccessToken(user);
 
     res.cookie('access_token', newAccessToken, {
             httpOnly: true,

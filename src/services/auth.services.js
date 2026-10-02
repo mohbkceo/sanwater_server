@@ -38,6 +38,7 @@ class AuthServices {
                 fullName:user.fullName,
                 uid:user._id,
                 role:user.role,
+                persona:user.persona || 'general_admin',
                 permissions: user.permissions || [],
                 authKey: user?.authKey
             }}
@@ -74,6 +75,7 @@ class AuthServices {
                     fullName:user.fullName,
                     uid:user._id,
                     role:user?.role,
+                    persona:user?.persona || 'general_admin',
                     permissions: user.permissions || []
                 }
             }

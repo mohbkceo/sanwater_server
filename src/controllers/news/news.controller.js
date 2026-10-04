@@ -110,7 +110,7 @@ const getNewsBySlug = async (req, res, next) => {
 
 const getAdminNewsById = async (req, res, next) => {
   try {
-    const news = await News.findById(req.params.id).populate('authorUser', 'fullName email').populate('relatedProducts', 'name serialNumber slug gallery shortDescription prices');
+    const news = await News.findById(req.params.id).select('-__v').populate('authorUser', 'fullName email').populate('relatedProducts', 'name serialNumber slug gallery shortDescription prices');
     if (!news) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
     return returnResponse(res, SUCCESS.RESOURCES_FOUND, news);
   } catch (err) { next(err); }

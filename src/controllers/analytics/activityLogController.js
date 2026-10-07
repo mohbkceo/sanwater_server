@@ -42,7 +42,10 @@ const getLogs = async (req, res, next) => {
         { targetId: rx }, { 'details.summary': rx }, { 'details.entity.name': rx },
         { 'details.entity.title': rx }, { 'details.entity.email': rx },
         { 'details.name': rx }, { 'details.title': rx }, { 'details.familyName': rx },
-        { 'details.entity.serialNumber': rx }, { 'details.changes.label': rx },
+        { 'details.entity.serialNumber': rx }, { 'details.entity.familyName': rx },
+        { 'details.entity.subFamilyName': rx }, { 'details.imageContext.productName': rx },
+        { 'details.imageContext.familyName': rx }, { 'details.imageContext.subFamilyName': rx },
+        { 'details.changes.label': rx },
       ];
     }
 

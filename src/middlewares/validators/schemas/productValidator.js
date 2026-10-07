@@ -10,6 +10,8 @@ const productFields = {
     author: JOI.string().optional(),
     name: JOI.string().min(1).max(150).optional().allow(null, ''),
     productId: JOI.string().trim().min(1).max(50),
+    family: JOI.string().hex().length(24).allow('', null).optional(),
+    subFamily: JOI.string().hex().length(24).allow('', null).optional(),
     serialNumber: JOI.string().optional(),
     isActive: JOI.boolean().optional(),
     isEcommerce: JOI.boolean().optional(),

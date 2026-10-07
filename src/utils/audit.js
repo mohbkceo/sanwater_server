@@ -75,6 +75,10 @@ function entityFor(target, value = {}) {
   const candidates = ['name', 'title', 'email', 'fullName', 'serialNumber', 'productId', 'slug', 'family', 'subFamily'];
   for (const key of candidates) if (item[key] !== undefined) entity[key] = item[key];
   entity.id = item._id || item.id;
+  if (target === 'Product') {
+    if (item.family?.name) entity.familyName = item.family.name;
+    if (item.subFamily?.name) entity.subFamilyName = item.subFamily.name;
+  }
   if (target === 'SubFamily' && item.family?.name) entity.familyName = item.family.name;
   return redact(entity);
 }
@@ -82,7 +86,20 @@ function entityFor(target, value = {}) {
 function buildUpdateDetails(target, before, after, summary) {
   const changes = diff(before, after);
   const entity = entityFor(target, after);
-  return { summary: summary || `${target} updated${entity.name || entity.title ? `: ${entity.name || entity.title}` : ''}`, entity, changedFields: changes.map((change) => change.field), changes };
+  const imageChanged = changes.some((change) => change.field === 'gallery' || change.field === 'image' || change.field.endsWith('.image'));
+  const imageContext = imageChanged ? {
+    target,
+    ...(target === 'Product' ? { productName: entity.name || entity.productId || entity.serialNumber } : {}),
+    familyName: target === 'Family' ? entity.name : entity.familyName,
+    subFamilyName: target === 'SubFamily' ? entity.name : entity.subFamilyName,
+  } : undefined;
+  return {
+    summary: summary || `${target} updated${entity.name || entity.title ? `: ${entity.name || entity.title}` : ''}`,
+    entity,
+    changedFields: changes.map((change) => change.field),
+    changes,
+    ...(imageContext ? { imageContext } : {}),
+  };
 }
 
 function buildEntityDetails(target, value, summary, extra = {}) {

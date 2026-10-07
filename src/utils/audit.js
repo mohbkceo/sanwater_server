@@ -75,7 +75,9 @@ function entityFor(target, value = {}) {
   const candidates = ['name', 'title', 'email', 'fullName', 'serialNumber', 'productId', 'slug', 'family', 'subFamily'];
   for (const key of candidates) if (item[key] !== undefined) entity[key] = item[key];
   entity.id = item._id || item.id;
-  if (target === 'SubFamily' && item.family?.name) entity.familyName = item.family.name;
+  if (target === 'Product' && value.family?.name) entity.familyName = value.family.name;
+  if (target === 'Product' && value.subFamily?.name) entity.subFamilyName = value.subFamily.name;
+  if (target === 'SubFamily' && (value.family?.name || item.family?.name)) entity.familyName = value.family?.name || item.family.name;
   return redact(entity);
 }
 

@@ -4,7 +4,7 @@ The catalog source of truth is a persisted, manually managed hierarchy:
 
 `Family -> SubFamily -> explicit Product assignment`
 
-Products are created unassigned with `family: null` and `subFamily: null`. Creating or editing a Product never creates taxonomy entities and never derives classification from `productId`. An admin first creates a Family, creates a Sub Family inside it, and then assigns existing Products from the Sub Family manager.
+Products can be created unassigned or assigned directly in the product form. The form can create a Family or Sub Family before saving the Product. The server derives the Family from the selected Sub Family and rejects mismatched Family IDs. Classification never derives from `productId`. The Sub Family manager also supports bulk assignment of existing Products.
 
 ## Visibility
 

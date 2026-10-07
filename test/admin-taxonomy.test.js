@@ -125,14 +125,14 @@ test('public hierarchy queries only active entities while admin includes inactiv
   assert.equal('isActive' in subFamilyQuery, false);
 });
 
-test('Product API creates and updates products without taxonomy fields', () => {
+test('Product API accepts valid taxonomy assignments and rejects malformed IDs', () => {
   const valid = createProductSchema.validate({ productId: 'X' });
   assert.equal(valid.error, undefined);
   assert.equal(createProductSchema.validate({ productId: 'LA100' }).error, undefined);
-  assert.ok(createProductSchema.validate({ productId: 'LA100', subFamily: String(subFamilyId) }).error);
-  assert.ok(createProductSchema.validate({ productId: 'LA100', family: String(familyId) }).error);
+  assert.equal(createProductSchema.validate({ productId: 'LA100', subFamily: String(subFamilyId), family: String(familyId) }).error, undefined);
+  assert.ok(createProductSchema.validate({ productId: 'LA100', subFamily: 'bad-id' }).error);
   assert.equal(updateProductSchema.validate({ productId: 'ZZ999' }).error, undefined);
-  assert.ok(updateProductSchema.validate({ subFamily: String(subFamilyId) }).error);
+  assert.equal(updateProductSchema.validate({ subFamily: String(subFamilyId) }).error, undefined);
 });
 
 test('bulk assignment sets both Sub Family and its parent Family, including moves', async (t) => {

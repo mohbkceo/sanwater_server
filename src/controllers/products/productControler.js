@@ -10,7 +10,25 @@ const { buildEntityDetails, diff } = require("../../utils/audit");
 const { emitBusinessEvent } = require('../../services/analytics/tracking');
 const {
   resolveCatalogFilter,
+  resolveSubFamilyAssignment,
 } = require("../../services/taxonomy.service");
+
+async function catalogAssignment(body) {
+  if (body.subFamily === undefined && body.family === undefined) return {};
+  if (body.subFamily === undefined) {
+    if (!body.family) return { family: null, subFamily: null };
+    throw new CostumeExption(ERRORS.INVALID.msg, ERRORS.INVALID.statusCode, ERRORS.INVALID.key, { message: 'sub_family_required' });
+  }
+  if (body.subFamily === null || body.subFamily === '') {
+    if (body.family) throw new CostumeExption(ERRORS.INVALID.msg, ERRORS.INVALID.statusCode, ERRORS.INVALID.key, { message: 'sub_family_required' });
+    return { family: null, subFamily: null };
+  }
+  const assignment = await resolveSubFamilyAssignment(body.subFamily);
+  if (body.family && String(body.family) !== String(assignment.family)) {
+    throw new CostumeExption(ERRORS.INVALID.msg, ERRORS.INVALID.statusCode, ERRORS.INVALID.key, { message: 'sub_family_does_not_belong_to_family' });
+  }
+  return assignment;
+}
 
 async function createProduct(req, res) {
   try {
@@ -56,8 +74,7 @@ async function createProduct(req, res) {
 
     const product = new Product({
       author,
-      family: null,
-      subFamily: null,
+      ...(await catalogAssignment(req.body)),
       name,
       serialNumber,
       tags,
@@ -83,6 +100,7 @@ async function createProduct(req, res) {
     });
 
     await product.save();
+    await product.populate('family subFamily');
     await logActivity(req, "CREATE", "Product", serialNumber, buildEntityDetails('Product', product, `Created product ${product.name || serialNumber}`));
     await emitBusinessEvent('product_created', 'product', product._id, 'created', {}, { userId: req.user.uid }).catch(() => null);
 
@@ -317,6 +335,7 @@ async function updateProduct(req, res) {
     if (!before) {
       throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` });
     }
+    Object.assign(updateData, await catalogAssignment(req.body));
     const product = await Product.findOneAndUpdate(
       { serialNumber },
       updateData,

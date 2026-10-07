@@ -210,13 +210,10 @@ const deleteNews = async (req, res, next) => {
   try {
     const news = await News.findById(req.params.id);
     if (!news) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
-    const before = news.toObject();
-    news.status = 'archived';
-    await news.save();
-    await createRevision(news, req.user.uid, 'manual_save');
-    await logUpdateActivity(req, 'UPDATE', 'News', news._id, before, news, `Archived article ${news.title}`);
-    if (before.status !== 'archived') await emitBusinessEvent('article_archived', 'article', news._id, news.updatedAt.getTime(), {}, { userId: req.user.uid }).catch(() => null);
-    return returnResponse(res, SUCCESS.RESOURCES_UPDATED, news);
+    await NewsRevision.deleteMany({ article: news._id });
+    await news.deleteOne();
+    await logActivity(req, 'DELETE', 'News', news._id, buildEntityDetails('News', news, `Deleted article ${news.title}`, { deleted: true }));
+    return returnResponse(res, SUCCESS.RESOURCES_DELETED);
   } catch (err) { next(err); }
 };
 

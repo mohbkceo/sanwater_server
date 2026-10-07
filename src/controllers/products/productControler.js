@@ -1,6 +1,7 @@
 const { ERRORS, SUCCESS } = require("../../config/messages");
 const CostumeExption = require("../../utils/CostumeException");
 const Product = require("../../models/product.model");
+const Family = require("../../models/family.model");
 const generateSerialNumber = require("../../utils/serialNumberGenerator");
 const errorHandler = require("../../utils/error.middleware");
 const returnResponse = require("../../utils/responseHandler");
@@ -10,7 +11,37 @@ const { buildEntityDetails, diff } = require("../../utils/audit");
 const { emitBusinessEvent } = require('../../services/analytics/tracking');
 const {
   resolveCatalogFilter,
+  resolveSubFamilyAssignment,
 } = require("../../services/taxonomy.service");
+
+function invalidTaxonomy(message) {
+  return new CostumeExption(
+    ERRORS.INVALID.msg,
+    ERRORS.INVALID.statusCode,
+    ERRORS.INVALID.key,
+    { message },
+  );
+}
+
+async function resolveProductTaxonomyAssignment(familyId, subFamilyId) {
+  const normalizedFamily = familyId || null;
+  const normalizedSubFamily = subFamilyId || null;
+
+  if (normalizedSubFamily) {
+    const assignment = await resolveSubFamilyAssignment(normalizedSubFamily);
+    if (normalizedFamily && String(assignment.family) !== String(normalizedFamily)) {
+      throw invalidTaxonomy("sub_family_does_not_belong_to_family");
+    }
+    return assignment;
+  }
+
+  if (!normalizedFamily) return { family: null, subFamily: null };
+  if (!mongoose.isValidObjectId(normalizedFamily)) throw invalidTaxonomy("invalid_family");
+
+  const family = await Family.findById(normalizedFamily).select("_id");
+  if (!family) throw invalidTaxonomy("family_not_found");
+  return { family: family._id, subFamily: null };
+}
 
 async function createProduct(req, res) {
   try {
@@ -19,6 +50,8 @@ async function createProduct(req, res) {
       name,
       gallery,
       productId,
+      family,
+      subFamily,
       productVariants,
       prices,
       isActive,
@@ -54,10 +87,12 @@ async function createProduct(req, res) {
       );
     }
 
+    const taxonomy = await resolveProductTaxonomyAssignment(family, subFamily);
+
     const product = new Product({
       author,
-      family: null,
-      subFamily: null,
+      family: taxonomy.family,
+      subFamily: taxonomy.subFamily,
       name,
       serialNumber,
       tags,
@@ -270,6 +305,8 @@ async function updateProduct(req, res) {
       isEcommerce,
       name,
       productId,
+      family,
+      subFamily,
       isActive,
       slug,
       shortDescription,
@@ -312,6 +349,12 @@ async function updateProduct(req, res) {
     const updateData = Object.fromEntries(
       Object.entries(candidateUpdates).filter(([, value]) => value !== undefined),
     );
+
+    if (family !== undefined || subFamily !== undefined) {
+      const taxonomy = await resolveProductTaxonomyAssignment(family, subFamily);
+      updateData.family = taxonomy.family;
+      updateData.subFamily = taxonomy.subFamily;
+    }
 
     const before = await Product.findOne({ serialNumber }).populate('family', 'name slug').populate('subFamily', 'name slug family');
     if (!before) {

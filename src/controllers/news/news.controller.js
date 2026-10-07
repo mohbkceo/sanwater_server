@@ -49,6 +49,15 @@ function publicFilter() {
   return { $or: [{ status: 'published' }, { status: 'scheduled', publishedAt: { $lte: new Date() } }] };
 }
 
+async function withInlineProducts(article, publicOnly = false) {
+  const raw = article.toObject ? article.toObject() : article;
+  const ids = [...new Set([...String(raw.content || '').matchAll(/data-content-type="product"\s+data-payload="([^"]+)"/g)].map((match) => {
+    try { return JSON.parse(decodeURIComponent(match[1])).id; } catch { return ''; }
+  }).filter((id) => typeof id === 'string' && /^[a-f\d]{24}$/i.test(id)))];
+  const inlineProducts = ids.length ? await Product.find({ _id: { $in: ids }, ...(publicOnly ? { isActive: true, isEcommerce: { $in: [false, null] } } : {}) }).select('name serialNumber slug gallery shortDescription').lean() : [];
+  return { ...raw, inlineProducts };
+}
+
 const createNews = async (req, res, next) => {
   try {
     const news = new News({ author: req.user.email || 'Admin', authorUser: req.user.uid, status: 'draft' });
@@ -104,7 +113,7 @@ const getNewsBySlug = async (req, res, next) => {
   try {
     const news = await News.findOne({ slug: req.params.slug, ...publicFilter() }).select('-authorUser').populate('relatedProducts', 'name serialNumber slug gallery shortDescription prices');
     if (!news) return res.status(404).json({ success: false, message: 'News article not found' });
-    return returnResponse(res, SUCCESS.RESOURCES_FOUND, news);
+    return returnResponse(res, SUCCESS.RESOURCES_FOUND, await withInlineProducts(news, true));
   } catch (err) { next(err); }
 };
 
@@ -112,7 +121,7 @@ const getAdminNewsById = async (req, res, next) => {
   try {
     const news = await News.findById(req.params.id).populate('authorUser', 'fullName email').populate('relatedProducts', 'name serialNumber slug gallery shortDescription prices');
     if (!news) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
-    return returnResponse(res, SUCCESS.RESOURCES_FOUND, news);
+    return returnResponse(res, SUCCESS.RESOURCES_FOUND, await withInlineProducts(news));
   } catch (err) { next(err); }
 };
 
@@ -161,7 +170,7 @@ const getRevision = async (req, res, next) => {
   try {
     const revision = await NewsRevision.findOne({ _id: req.params.revisionId, article: req.params.id }).populate('editor', 'fullName email');
     if (!revision) throw new CostumeExption(ERRORS.NOT_FOUND.msg, 404);
-    return returnResponse(res, SUCCESS.RESOURCES_FOUND, revision);
+    return returnResponse(res, SUCCESS.RESOURCES_FOUND, { ...revision.toObject(), snapshot: await withInlineProducts(revision.snapshot) });
   } catch (err) { next(err); }
 };
 

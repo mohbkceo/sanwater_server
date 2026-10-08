@@ -4,6 +4,7 @@ const { SUCCESS, ERRORS } = require('../../config/messages');
 const CostumeExption = require('../../utils/CostumeException');
 const { logUpdateActivity } = require('../../utils/logger');
 const { emitBusinessEvent } = require('../../services/analytics/tracking');
+const { quote } = require('../../services/shipping.service');
 
 // Public: a customer (consumer, contractor, dealer, ...) requests a quote
 // for one or more products. No auth required — this is the storefront
@@ -12,12 +13,45 @@ const { emitBusinessEvent } = require('../../services/analytics/tracking');
 // validated payload (status/assignedAdmin/adminNotes are never client-set).
 const createQuotation = async (req, res, next) => {
     try {
-        const { items, requester, source } = req.body;
+        const { items, requester, source, delivery } = req.body;
+        let finalItems = items;
+        let finalRequester = requester;
+        let shippingSnapshot = null;
+        let pricing = null;
+        if (delivery) {
+            if (items.length !== 1 || !items[0].product) {
+                throw new CostumeExption('Checkout requires exactly one product', 422, 'INVALID_CHECKOUT');
+            }
+            const calculated = await quote(delivery, items[0].product, items[0].quantity);
+            if (calculated.tariffRevision !== delivery.expectedTariffRevision || calculated.unitPrice !== delivery.expectedUnitPrice) {
+                throw new CostumeExption('Shipping tariff or product price changed. Request a new quote.', 409, 'STALE_CHECKOUT_QUOTE');
+            }
+            finalItems = [{
+                product: calculated.product,
+                productName: calculated.productName,
+                productSerialNumber: calculated.productSerialNumber,
+                quantity: calculated.quantity,
+            }];
+            shippingSnapshot = {
+                wilayaCode: calculated.wilayaCode, wilayaName: calculated.wilayaName,
+                communeCode: calculated.communeCode, communeName: calculated.communeName,
+                deliveryType: calculated.deliveryType, address: calculated.address,
+                office: calculated.office,
+            };
+            finalRequester = { ...requester, address: calculated.address };
+            pricing = {
+                unitPrice: calculated.unitPrice, subtotal: calculated.subtotal,
+                shippingFee: calculated.shippingFee, total: calculated.total,
+                currency: 'DZD', tariffRevision: calculated.tariffRevision,
+                quotedAt: calculated.quotedAt,
+            };
+        }
 
         const quotation = await Quotation.create({
-            items,
-            requester,
+            items: finalItems,
+            requester: finalRequester,
             source: source || null,
+            ...(delivery ? { delivery: shippingSnapshot, pricing } : {}),
             statusHistory: [{ status: 'submitted', changedAt: new Date() }],
         });
         await emitBusinessEvent('quotation_submitted', 'quotation', quotation._id, 'submitted').catch(() => null);

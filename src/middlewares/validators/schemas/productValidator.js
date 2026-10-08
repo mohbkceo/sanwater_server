@@ -23,6 +23,7 @@ const productFields = {
     })).optional(),
     prices: JOI.object({
         productPrice: JOI.number().min(0).optional(),
+        // Accept legacy API payloads, but never use this for shipping quotes.
         shippingPrice: JOI.number().min(0).optional(),
     }).optional(),
 

@@ -39,7 +39,8 @@ const productSchema = new mongoose.Schema({
     },
     prices: {
         productPrice: {type: Number, default: 1509, min: 0},
-        shippingPrice: {type: Number, default: 800, min: 0},
+        // Legacy read-only field retained for old documents; checkout ignores it.
+        shippingPrice: {type: Number, min: 0},
     },
 
     // --- Digital representation fields ---

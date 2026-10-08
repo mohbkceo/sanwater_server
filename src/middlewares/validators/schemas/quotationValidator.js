@@ -1,8 +1,9 @@
 const Joi = require('joi');
 const { QUOTATION_STATUSES, CUSTOMER_TYPES } = require('../../../models/quotation.model');
+const { delivery } = require('./shippingValidator');
 
 const quotationItemSchema = Joi.object({
-    product: Joi.string().allow(null, '').optional(),
+    product: Joi.string().hex().length(24).allow(null, '').optional(),
     productName: Joi.string().required().trim().max(150),
     productSerialNumber: Joi.string().allow(null, '').trim(),
     quantity: Joi.number().integer().min(1).default(1),
@@ -24,6 +25,12 @@ const createQuotationSchema = Joi.object({
         notes: Joi.string().allow(null, '').trim().max(1000),
     }).required(),
     source: Joi.string().allow(null, '').trim().max(100),
+    delivery: delivery.optional(),
+}).custom((value, helpers) => {
+    if (value.source === 'landing_product_page' && (!value.delivery || value.items.length !== 1 || !value.items[0].product)) {
+        return helpers.error('any.custom', { message: 'Landing orders require one product and delivery details' });
+    }
+    return value;
 });
 
 const updateQuotationStatusSchema = Joi.object({

@@ -26,6 +26,7 @@ app.use('/families', require('./routes/family.routes'));
 app.use('/content', require('./routes/content.routes'))
 app.use('/news', require('./routes/news.routes'))
 app.use('/quotations', require('./routes/quotation.routes'))
+app.use('/shipping', require('./routes/shipping.routes'))
 app.use('/leads', require('./routes/lead.routes'))
 app.get('/', (_, res) => {
     res.send('built with love, by www.logixdz.com developers Coperation!');

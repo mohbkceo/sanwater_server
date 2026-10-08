@@ -25,6 +25,16 @@ const StatusHistoryEntry = new mongoose.Schema({
 const QUOTATION_STATUSES = ['submitted', 'under_review', 'quoted', 'negotiation', 'approved', 'rejected', 'closed'];
 const CUSTOMER_TYPES = ['consumer', 'contractor', 'architect', 'designer', 'dealer', 'distributor', 'business'];
 
+const DeliverySnapshot = new mongoose.Schema({
+    wilayaCode: String, wilayaName: String, communeCode: String, communeName: String,
+    deliveryType: String, address: String,
+    office: { code: String, name: String, address: String },
+}, { _id: false });
+const PricingSnapshot = new mongoose.Schema({
+    unitPrice: Number, subtotal: Number, shippingFee: Number, total: Number,
+    currency: String, tariffRevision: Number, quotedAt: Date,
+}, { _id: false });
+
 const quotationSchema = new mongoose.Schema({
     items: {
         type: [QuotationItem],
@@ -58,6 +68,9 @@ const quotationSchema = new mongoose.Schema({
     // Where the request came from (e.g. 'product_detail_page'), for basic
     // conversion attribution later — not user-facing.
     source: { type: String, trim: true, default: null },
+    // Immutable checkout snapshot. B2B RFQs leave this null.
+    delivery: { type: DeliverySnapshot, default: undefined },
+    pricing: { type: PricingSnapshot, default: undefined },
 }, { timestamps: true });
 
 quotationSchema.index({ status: 1, createdAt: -1 });

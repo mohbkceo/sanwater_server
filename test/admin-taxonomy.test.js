@@ -44,6 +44,17 @@ test('Product can exist without a Family or Sub Family', () => {
   assert.equal(product.subFamily, null);
 });
 
+test('Product generates a usable slug when the name has no Latin characters', async (t) => {
+  t.mock.method(Product, 'findOne', async () => null);
+  const product = new Product({
+    author: 'admin@example.com', name: 'خلاط', productId: 'BM-10', serialNumber: 'product-test',
+  });
+  await new Promise((resolve, reject) => {
+    Product.schema.s.hooks.execPre('save', product, [], (error) => error ? reject(error) : resolve());
+  });
+  assert.equal(product.slug, 'bm-10');
+});
+
 test('empty Families and Sub Families are valid', () => {
   const family = new Family({ name: 'Empty Family', slug: 'empty-family' });
   const subFamily = new SubFamily({ name: 'Empty Sub Family', slug: 'empty-sub-family', family: familyId });

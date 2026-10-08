@@ -1,6 +1,7 @@
 const mongoose = require('mongoose')
 const DocumentEntrySchema = require('./shared/documentEntry.schema')
 const SeoSchema = require('./shared/seo.schema')
+const slugify = require('../utils/slugify')
 
 const VariantValue  = new mongoose.Schema({
     variantData: {type: String},
@@ -67,25 +68,17 @@ const productSchema = new mongoose.Schema({
 
 }, {timestamps: true})
 
-function generateSlug(text) {
-    return text
-        .toString()
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w-]+/g, '')
-        .replace(/--+/g, '-');
-}
-
 // Auto-generate a slug from the product name (falling back to the SKU/
 // productId when no name is set) the first time it's missing. Never
 // overwrites a slug an admin already set, so it stays stable once published
 // (SEO URL rule: one canonical URL per entity).
 productSchema.pre('save', async function (next) {
     if (!this.slug) {
-        const base = this.name || this.productId || this.serialNumber;
-        if (base) {
-            let baseSlug = generateSlug(base);
+        const baseSlug = [this.name, this.productId, this.serialNumber]
+            .filter(Boolean)
+            .map(slugify)
+            .find(Boolean);
+        if (baseSlug) {
             let slug = baseSlug;
             let counter = 1;
 

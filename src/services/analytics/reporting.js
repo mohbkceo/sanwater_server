@@ -3,6 +3,7 @@ const AnalyticsEvent = require('../../models/analyticsEvent.model');
 const AnalyticsSession = require('../../models/analyticsSession.model');
 const LegacyEvent = require('../../models/event.model');
 const Lead = require('../../models/lead.model');
+const Order = require('../../models/ecommerceOrder.model');
 const Product = require('../../models/product.model');
 const Hiring = require('../../models/hiring.model');
 const Application = require('../../models/application.model');
@@ -18,6 +19,9 @@ const { SUBJECT_TYPES } = require('../../config/analytics');
 const range = (p) => ({ $gte: p.from, $lte: p.to });
 const previous = (p) => ({ from: p.comparisonFrom, to: p.comparisonTo });
 const unavailable = (reason) => ({ available: false, reason });
+const orderRevenue = { $cond: [{ $eq: ['$commercialStatus', 'DELIVERED'] }, { $max: [0, { $subtract: [{ $subtract: ['$financials.subtotal', '$financials.discount'] }, '$payment.refunded'] }] }, 0] };
+const merchandiseRevenue = { $subtract: ['$financials.subtotal', '$financials.discount'] };
+const realizedLineRevenue = { $cond: [{ $gt: [merchandiseRevenue, 0] }, { $multiply: ['$items.lineTotal', { $divide: [orderRevenue, merchandiseRevenue] }] }, 0] };
 async function eventCount(name, p, subject) {
   const match = { name, occurredAt: range(p) };
   if (subject) { match['subject.type'] = subject.type; match['subject.id'] = String(subject.id); }
@@ -44,7 +48,7 @@ async function uniqueEventVisitors(name, p, subject) {
 async function commercial(p) {
   const [qualified, won] = await Promise.all([
     Lead.countDocuments(buildStageMatch(QUALIFIED_LEAD_STATUSES, p.from, p.to)),
-    Lead.aggregate([{ $match: buildOrderMatch(p.from, p.to) }, { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: { $ifNull: ['$finalValue', 0] } }, missingRevenue: { $sum: { $cond: [{ $eq: ['$finalValue', null] }, 1, 0] } } } }]),
+    Order.aggregate([{ $match: buildOrderMatch(p.from, p.to) }, { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: orderRevenue }, missingRevenue: { $sum: 0 } } }]),
   ]);
   return { qualifiedLeads: qualified, wonDeals: won[0]?.count || 0, revenue: won[0]?.revenue || 0, ordersMissingRevenue: won[0]?.missingRevenue || 0 };
 }
@@ -81,7 +85,9 @@ async function productRows(p) {
     AnalyticsEvent.aggregate([{ $match: { name: 'product_inquiry_started', occurredAt: range(p), 'subject.type': 'product' } }, { $group: { _id: '$subject.id', count: { $sum: 1 } } }]),
     LegacyEvent.aggregate([{ $match: { type: 'product_inquiry_started', ts: range(p), device: { $ne: 'bot' } } }, { $group: { _id: { $ifNull: ['$meta.product_id', '$meta.product_serial'] }, count: { $sum: 1 } } }]),
     Lead.aggregate([{ $match: buildStageMatch(QUALIFIED_LEAD_STATUSES, p.from, p.to) }, { $group: { _id: '$productId', count: { $sum: 1 } } }]),
-    Lead.aggregate([{ $match: buildOrderMatch(p.from, p.to) }, { $group: { _id: '$productId', count: { $sum: 1 }, revenue: { $sum: { $ifNull: ['$finalValue', 0] } } } }]),
+    Order.aggregate([{ $match: buildOrderMatch(p.from, p.to) }, { $unwind: '$items' },
+      { $group: { _id: { product: '$items.productId', order: '$_id' }, revenue: { $sum: realizedLineRevenue } } },
+      { $group: { _id: '$_id.product', count: { $sum: 1 }, revenue: { $sum: '$revenue' } } }]),
   ]);
   const map = rows => new Map(rows.map(r => [String(r._id), r]));
   const mv = map(modernViews), lv = map(legacyViews), im = map(intent), li = map(legacyIntent), qm = map(qualified), wm = map(won);
@@ -127,12 +133,12 @@ async function marketing(p) {
     commercial(p), commercial(previous(p)), uniqueEventVisitors('product_viewed', p), uniqueEventVisitors('product_inquiry_started', p),
     Lead.countDocuments({ createdAt: range(p) }),
     Lead.aggregate([{ $match: { createdAt: range(p), visitorId: { $nin: [null, ''] } } }, { $group: { _id: '$visitorId' } }, { $count: 'count' }]),
-    Lead.countDocuments({ createdAt: range(p), status: 'won' }),
+    Order.countDocuments(buildOrderMatch(p.from, p.to)),
     Lead.countDocuments({ createdAt: range(p), source: { $in: [null, ''] } }),
     Lead.countDocuments({ createdAt: range(p), visitorId: { $in: [null, ''] } }),
     AnalyticsEvent.countDocuments({ occurredAt: range(p), name: { $in: ['product_viewed', 'product_inquiry_started', 'article_viewed', 'job_viewed'] }, 'subject.id': { $exists: false } }),
     Lead.aggregate([{ $match: buildStageMatch(QUALIFIED_LEAD_STATUSES, p.from, p.to) }, { $group: { _id: { $ifNull: ['$source', 'unknown'] }, count: { $sum: 1 } } }]),
-    Lead.aggregate([{ $match: buildOrderMatch(p.from, p.to) }, { $group: { _id: { $ifNull: ['$source', 'unknown'] }, count: { $sum: 1 }, revenue: { $sum: { $ifNull: ['$finalValue', 0] } } } }]),
+    Order.aggregate([{ $match: buildOrderMatch(p.from, p.to) }, { $group: { _id: { $ifNull: ['$source', 'unknown'] }, count: { $sum: 1 }, revenue: { $sum: orderRevenue } } }]),
   ]);
   const funnel = buildFunnel({ page_view: visitors, product_view: productViewers, product_inquiry_started: intent, lead_submitted: submitted }, {}, current.wonDeals, 0);
   funnel.stages.splice(4, 0, { key: 'qualified_lead', name: 'Qualified Lead', current: current.qualifiedLeads, previous: prior.qualifiedLeads, comparison: comparison(current.qualifiedLeads, prior.qualifiedLeads), conversionRate: null, previousConversionRate: null, dropOffRate: null });

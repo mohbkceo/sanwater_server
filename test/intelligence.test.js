@@ -11,6 +11,7 @@ const { adaptLegacy } = require('../src/controllers/analytics/tracking.controlle
 const { attentionFromReports, buildSourceQuality, productFunnel, sales } = require('../src/services/analytics/reporting');
 const { subject } = require('../src/services/analytics/reporting');
 const Lead = require('../src/models/lead.model');
+const Order = require('../src/models/ecommerceOrder.model');
 const ActivityLog = require('../src/models/activityLog.model');
 const Hiring = require('../src/models/hiring.model');
 const Application = require('../src/models/application.model');
@@ -111,7 +112,8 @@ test('attention findings contain transparent evidence and a subject drilldown', 
 
 test('sales lead volume compares against the equivalent preceding period', async () => {
   const p = resolvePeriod({ from: '2026-10-01', to: '2026-10-02' });
-  const original = { count: Lead.countDocuments, aggregate: Lead.aggregate };
+  const original = { count: Lead.countDocuments, aggregate: Lead.aggregate, orders: Order.aggregate };
+  Order.aggregate = async () => [];
   Lead.countDocuments = async filter => filter.createdAt ? (filter.createdAt.$gte.getTime() === p.from.getTime() ? 10 : 4) : 0;
   Lead.aggregate = async () => [];
   try {
@@ -119,7 +121,7 @@ test('sales lead volume compares against the equivalent preceding period', async
     assert.equal(report.kpis.newLeads.current, 10);
     assert.equal(report.kpis.newLeads.previous, 4);
     assert.equal(report.kpis.newLeads.percentageChange, 150);
-  } finally { Lead.countDocuments = original.count; Lead.aggregate = original.aggregate; }
+  } finally { Lead.countDocuments = original.count; Lead.aggregate = original.aggregate; Order.aggregate = original.orders; }
 });
 
 test('source quality joins observed visitors and CRM outcomes without source case splits', () => {
@@ -160,6 +162,11 @@ test('subject report combines lifecycle history with separate admin audit events
 test('explorer requires analytics.explore and subject audit details require logs.view', async () => {
   const id = '507f1f77bcf86cd799439011';
   const original = reports.subject;
+  const visualizations = require('../src/services/analytics/visualizations');
+  const originalSeries = visualizations.forSubject;
+  visualizations.forSubject = async () => ({rows:[]});
+  const originalFind = Lead.findById;
+  Lead.findById = () => ({ select: () => ({ lean: async () => ({ _id: id, fullName: 'Example lead' }) }) });
   let options;
   reports.subject = async (_type, _id, _period, supplied) => { options = supplied; return { activity: [] }; };
   const response = { json(value) { this.body = value; } };
@@ -174,7 +181,7 @@ test('explorer requires analytics.explore and subject audit details require logs
     req.user.permissions.push(PERMISSIONS.LOGS.VIEW);
     await intelligenceController.subject(req, response, error => errors.push(error));
     assert.equal(options.includeActivity, true);
-  } finally { reports.subject = original; }
+  } finally { reports.subject = original; Lead.findById = originalFind; visualizations.forSubject = originalSeries; }
 });
 
 test('public application submission records an actual candidate and an authoritative event', async () => {

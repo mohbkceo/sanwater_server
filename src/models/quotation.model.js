@@ -68,6 +68,7 @@ const quotationSchema = new mongoose.Schema({
     // Where the request came from (e.g. 'product_detail_page'), for basic
     // conversion attribution later — not user-facing.
     source: { type: String, trim: true, default: null },
+    convertedOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'EcommerceOrder', default: null },
     // Immutable checkout snapshot. B2B RFQs leave this null.
     delivery: { type: DeliverySnapshot, default: undefined },
     pricing: { type: PricingSnapshot, default: undefined },

@@ -7,8 +7,7 @@ const fields = {
   title: Joi.string().trim().min(2).max(200), excerpt: Joi.string().allow('', null).trim().max(600),
   content: Joi.string().max(500000), coverImage: nullableUrl, category: Joi.string().allow('', null).trim().max(100),
   tags: Joi.array().items(Joi.string().trim().max(50)).max(30), status: Joi.string().valid(...statuses),
-  publishedAt: Joi.date().iso().allow(null, ''), seoTitle: Joi.string().allow('', null).trim().max(100),
-  seoDescription: Joi.string().allow('', null).trim().max(300), canonicalUrl: nullableUrl,
+  publishedAt: Joi.date().iso().allow(null, ''),
   isFeatured: Joi.boolean(), relatedProducts,
 };
 const scheduleRule = (value, helpers) => {

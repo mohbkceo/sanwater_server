@@ -6,6 +6,9 @@
     "start": "node src/server.js",
     "dev": "node src/server.js",
     "test": "node --test",
+    "check": "node src/scripts/check-syntax.js",
+    "qa:ecommerce": "node src/scripts/qa-ecommerce.js",
+    "migrate:ecommerce": "node src/scripts/migrate-ecommerce.js",
     "migrate:permissions": "node src/scripts/migrate-roles-to-permissions.js",
     "migrate:quotations-permission": "node src/scripts/migrate-orders-to-quotations-permission.js",
     "migrate:analytics": "node src/scripts/migrate-analytics-permissions.js"
@@ -15,22 +18,26 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "axios": "^1.13.2",
-    "bcryptjs": "^3.0.2",
-    "cloudinary": "^1.41.3",
+    "axios": "^1.21.0",
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
     "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "express-rate-limit": "^8.6.2",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.3",
+    "express-rate-limit": "^8.7.3",
     "http-proxy-agent": "^7.0.2",
     "https-proxy-agent": "^7.0.6",
-    "joi": "^18.0.2",
-    "jsonwebtoken": "^9.0.2",
+    "joi": "^18.3.2",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.511.0",
-    "mongoose": "^8.13.0",
-    "multer": "^1.4.5-lts.2",
-    "multer-storage-cloudinary": "^4.0.0",
-    "sanitize-html": "^2.17.7"
+    "mongoose": "^8.24.8",
+    "multer": "2.5.0",
+    "sanitize-html": "^2.18.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^10.4.3",
+    "supertest": "^7.3.1"
   }
 }

@@ -11,7 +11,7 @@ const corsOptions = require('./config/corsHandler');
 
 
 
-app.set('trust proxy', true)
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback')
 app.use(cookieParser())
 app.use(cors(corsOptions));
 app.use(express.json());
@@ -28,6 +28,7 @@ app.use('/news', require('./routes/news.routes'))
 app.use('/quotations', require('./routes/quotation.routes'))
 app.use('/shipping', require('./routes/shipping.routes'))
 app.use('/leads', require('./routes/lead.routes'))
+app.use('/ecommerce', require('./routes/ecommerce.routes'))
 app.get('/', (_, res) => {
     res.send('built with love, by www.logixdz.com developers Coperation!');
 })

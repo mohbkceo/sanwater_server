@@ -100,17 +100,18 @@ function classifyProducts(products, minimumViews = MIN_PRODUCT_VIEW_SAMPLE) {
   const siteMedianViews = median(eligible.map((product) => product.uniqueViews));
   const siteMedianConversion = median(eligible.map((product) => product.orderConversionRate));
   const totalViews = products.reduce((sum, product) => sum + product.uniqueViews, 0);
+  const hasObservedConversion = eligible.some(product => product.orderConversionRate > 0);
 
   return products.map((product) => {
     const trafficShare = safeRate(product.uniqueViews, totalViews) || 0;
     const evidence = { siteMedianViews, siteMedianConversion, trafficShare, minimumViews };
 
-    if (product.uniqueViews < minimumViews || product.orderConversionRate == null || eligible.length < 2) {
+    if (product.uniqueViews < minimumViews || product.orderConversionRate == null || eligible.length < 2 || !hasObservedConversion) {
       return {
         ...product,
         classification: "insufficient_data",
         classificationEvidence: evidence,
-        reason: `At least ${minimumViews} unique product views and two comparable products are required.`,
+        reason: product.uniqueViews >= minimumViews && product.orderConversionRate != null && eligible.length >= 2 && !hasObservedConversion ? 'No conversions observed in the comparable product population.' : `At least ${minimumViews} unique product views and two comparable products are required.`,
         recommendedAction: "Collect more data before changing promotion.",
       };
     }

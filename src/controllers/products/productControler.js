@@ -8,6 +8,7 @@ const { default: mongoose } = require("mongoose");
 const { logActivity, logUpdateActivity } = require("../../utils/logger");
 const { buildEntityDetails, diff } = require("../../utils/audit");
 const { emitBusinessEvent } = require('../../services/analytics/tracking');
+const catalog = require('../../services/products/catalog');
 const {
   resolveCatalogFilter,
   resolveSubFamilyAssignment,
@@ -72,7 +73,7 @@ async function createProduct(req, res) {
       );
     }
 
-    const product = new Product({
+    const product = new Product(catalog.prepare({
       author,
       ...(await catalogAssignment(req.body)),
       name,
@@ -97,14 +98,15 @@ async function createProduct(req, res) {
       relatedProducts,
       status,
       seo,
-    });
+      ...Object.fromEntries(['variantSchemaVersion', 'variantOptions', 'variantsV2'].filter(key => req.body[key] !== undefined).map(key => [key, req.body[key]])),
+    }));
 
     await product.save();
     await product.populate('family subFamily');
     await logActivity(req, "CREATE", "Product", serialNumber, buildEntityDetails('Product', product, `Created product ${product.name || serialNumber}`));
     await emitBusinessEvent('product_created', 'product', product._id, 'created', {}, { userId: req.user.uid }).catch(() => null);
 
-    return returnResponse(res, SUCCESS.RESOURCES_CREATED, product);
+    return returnResponse(res, SUCCESS.RESOURCES_CREATED, catalog.serialize(product));
   } catch (error) {
     errorHandler(res, error);
   }
@@ -140,9 +142,21 @@ async function getProducts(req, res) {
     const currentPage = isAdmin ? Math.max(Number(page) || 1, 1) : 1;
 
     const query = {};
+    if (isAdmin) {
+      if (['draft', 'published', 'archived'].includes(req.query.status)) query.status = req.query.status;
+      if (['true', 'false'].includes(req.query.isActive)) query.isActive = req.query.isActive === 'true';
+      if (req.query.hasVariants === 'true') query.$and = [{ $or: [{ 'variantsV2.0': { $exists: true } }, { 'commerce.variants.0': { $exists: true } }, { 'productVariants.0': { $exists: true } }] }];
+      if (req.query.hasVariants === 'false') query.$and = [{ 'variantsV2.0': { $exists: false }, 'commerce.variants.0': { $exists: false }, 'productVariants.0': { $exists: false } }];
+      if (['inStock', 'outOfStock'].includes(req.query.stock)) {
+        query.$and = [...(query.$and || []), { 'commerce.variants.0': { $exists: true } }, { 'commerce.variants': { $not: { $elemMatch: { trackStock: { $ne: true } } } } }];
+        const inStock = { 'commerce.variants': { $elemMatch: { trackStock: true, enabled: true, quantity: { $gt: 0 } } } };
+        query.$and.push(req.query.stock === 'inStock' ? inStock : { $nor: [inStock] });
+      }
+    }
 
     if (!isAdmin) {
       query.isActive = true;
+      query.$and = [{ $or: [{ commerce: { $exists: false } }, { commerce: null }, { 'commerce.published': true }] }];
       // Public catalog = anything not explicitly flagged e-commerce-only.
       // `isEcommerce` defaults to `false` on the schema, so nearly every
       // real product has it stored as `false`, not missing/null — querying
@@ -200,8 +214,8 @@ async function getProducts(req, res) {
     // (already forced true above for the public catalog), so there is no
     // real data to filter on yet.
 
-    const sortFieldMap = { createdAt: "createdAt", price: "prices.productPrice", name: "name", _id: "_id" };
-    const safeSortBy = sortFieldMap[sortBy] || "createdAt";
+    const sortFieldMap = { updatedAt: 'updatedAt', status: 'status', createdAt: "createdAt", price: "prices.productPrice", name: "name", _id: "_id" };
+    const safeSortBy = sortFieldMap[sortBy] || (isAdmin ? 'updatedAt' : 'createdAt');
     const safeSortOrder = String(sortOrder).toLowerCase() === "asc" ? 1 : -1;
 
     const sort = {};
@@ -224,7 +238,7 @@ async function getProducts(req, res) {
     const totalPages = isAdmin ? Math.max(Math.ceil(totalCount / limit), 1) : undefined;
 
     return returnResponse(res, SUCCESS.RESOURCES_FOUND, {
-      products,
+      products: products.map(catalog.serialize),
       count: products.length,
       ...(isAdmin ? {
         totalCount,
@@ -256,6 +270,7 @@ async function getProduct(req, res) {
     if (!req.catalogAdmin) {
       Object.assign(productQuery, await resolveCatalogFilter({ publicOnly: true }));
       productQuery.isActive = true;
+      productQuery.$and = [{ $or: [{ commerce: { $exists: false } }, { commerce: null }, { 'commerce.published': true }] }];
     }
     const product = await Product.findOne(productQuery)
       .populate('family', 'name slug isActive')
@@ -271,7 +286,7 @@ async function getProduct(req, res) {
       );
     }
 
-    return returnResponse(res, SUCCESS.RESOURCES_UPDATED, product);
+    return returnResponse(res, SUCCESS.RESOURCES_UPDATED, catalog.serialize(product));
   } catch (error) {
     errorHandler(res, error);
   }
@@ -336,11 +351,8 @@ async function updateProduct(req, res) {
       throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` });
     }
     Object.assign(updateData, await catalogAssignment(req.body));
-    const product = await Product.findOneAndUpdate(
-      { serialNumber },
-      updateData,
-      { new: true, runValidators: true },
-    ).populate('family', 'name slug').populate('subFamily', 'name slug family');
+    for (const key of ['catalogRevision', 'variantSchemaVersion', 'variantOptions', 'variantsV2']) if (req.body[key] !== undefined) updateData[key] = req.body[key];
+    const product = await catalog.update(serialNumber, updateData, before);
 
     if (!product) {
       throw new CostumeExption(
@@ -357,7 +369,7 @@ async function updateProduct(req, res) {
     if (before.status !== product.status && product.status === 'published') await emitBusinessEvent('product_published', 'product', product._id, version, {}, { userId: req.user.uid }).catch(() => null);
     if (before.status !== product.status && product.status === 'archived') await emitBusinessEvent('product_archived', 'product', product._id, version, {}, { userId: req.user.uid }).catch(() => null);
     if (before.prices?.productPrice !== product.prices?.productPrice) await emitBusinessEvent('product_price_changed', 'product', product._id, version, { before: before.prices?.productPrice, after: product.prices?.productPrice }, { userId: req.user.uid }).catch(() => null);
-    return returnResponse(res, SUCCESS.RESOURCES_UPDATED, product);
+    return returnResponse(res, SUCCESS.RESOURCES_UPDATED, catalog.serialize(product));
   } catch (error) {
     errorHandler(res, error);
   }
@@ -367,7 +379,12 @@ async function deleteProduct(req, res) {
   try {
     const { serialNumber } = req.params;
 
-    const product = await Product.findOneAndDelete({ serialNumber });
+    const candidate = await Product.findOne({ serialNumber }).select('_id');
+    if (candidate && await require('../../models/ecommerceOrder.model').exists({ inventoryState: 'RESERVED', 'items.productId': candidate._id })) {
+      throw new CostumeExption('Product has reserved inventory; archive it instead.', 409);
+    }
+
+    const product = await Product.findOneAndDelete({ serialNumber, 'commerce.reservedUnits': { $not: { $gt: 0 } } });
 
     if (!product) {
       throw new CostumeExption(

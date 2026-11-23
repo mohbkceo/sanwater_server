@@ -60,6 +60,7 @@ router.get(
   authorize(PERMISSIONS.SUBMISSIONS.VIEW),
   contactController.getSubmissions,
 );
+router.get('/contact/submissions/:id', authSanWater, authorize(PERMISSIONS.SUBMISSIONS.VIEW), contactController.getSubmission);
 router.put(
   "/contact/submissions/:id",
   authSanWater,

@@ -11,8 +11,9 @@ const { logActivity, logUpdateActivity } = require('../../utils/logger');
 const { buildEntityDetails, plain } = require('../../utils/audit');
 const sanitizeNewsHtml = require('../../utils/sanitizeNewsHtml');
 const { emitBusinessEvent } = require('../../services/analytics/tracking');
+const { metadata, renderArticleHTML, publicOrigin } = require('../../services/newsMetadata');
 
-const EDITABLE_FIELDS = ['title', 'excerpt', 'content', 'coverImage', 'category', 'tags', 'status', 'publishedAt', 'seoTitle', 'seoDescription', 'canonicalUrl', 'isFeatured', 'relatedProducts'];
+const EDITABLE_FIELDS = ['title', 'excerpt', 'content', 'coverImage', 'category', 'tags', 'status', 'publishedAt', 'isFeatured', 'relatedProducts'];
 const AUTOSAVE_FIELDS = EDITABLE_FIELDS.filter((field) => !['status', 'publishedAt'].includes(field));
 const generateSlug = (text) => String(text || '').toLowerCase().trim().replace(/\s+/g, '-').replace(/[^\w-]+/g, '').replace(/--+/g, '-');
 
@@ -27,7 +28,7 @@ async function ensureRelatedProducts(ids = []) {
 
 function snapshot(article) {
   const raw = article.toObject ? article.toObject() : article;
-  return Object.fromEntries(EDITABLE_FIELDS.concat(['slug', 'author']).filter((field) => raw[field] !== undefined).map((field) => [field, raw[field]]));
+  return Object.fromEntries(EDITABLE_FIELDS.concat(['slug', 'author', 'seoTitle', 'seoDescription', 'canonicalUrl']).filter((field) => raw[field] !== undefined).map((field) => [field, raw[field]]));
 }
 
 async function createRevision(article, userId, reason = 'manual_save') {
@@ -42,7 +43,7 @@ async function applyPayload(article, payload, fields = EDITABLE_FIELDS) {
     }
   }
   if (payload.relatedProducts !== undefined && fields.includes('relatedProducts')) article.relatedProducts = await ensureRelatedProducts(payload.relatedProducts);
-  if (payload.title !== undefined) article.slug = generateSlug(payload.title);
+  if (!article.slug && payload.title !== undefined) article.slug = generateSlug(payload.title);
 }
 
 function publicFilter() {
@@ -113,7 +114,8 @@ const getNewsBySlug = async (req, res, next) => {
   try {
     const news = await News.findOne({ slug: req.params.slug, ...publicFilter() }).select('-authorUser').populate('relatedProducts', 'name serialNumber slug gallery shortDescription prices');
     if (!news) return res.status(404).json({ success: false, message: 'News article not found' });
-    return returnResponse(res, SUCCESS.RESOURCES_FOUND, await withInlineProducts(news, true));
+    const article = await withInlineProducts(news, true);
+    return returnResponse(res, SUCCESS.RESOURCES_FOUND, { ...article, metadata: metadata(article) });
   } catch (err) { next(err); }
 };
 
@@ -218,3 +220,17 @@ const deleteNews = async (req, res, next) => {
 };
 
 module.exports = { createNews, getAllNews, getNewsBySlug, getAdminNewsById, updateNews, autosaveNews, listRevisions, getRevision, restoreRevision, bulkUpdateNews, deleteNews };
+
+module.exports.publicHTML = async (req, res, next) => {
+  try {
+    const article = await News.findOne({ slug: String(req.params.slug).slice(0, 250), ...publicFilter() }).select('-authorUser').lean();
+    res.set('Cache-Control', 'no-store');
+    if (!article) return res.status(404).set('X-Robots-Tag', 'noindex,nofollow').type('html').send('<!doctype html><html><head><meta name="robots" content="noindex,nofollow"><title>Article unavailable</title></head><body><main><h1>Article unavailable</h1><a href="/news">News</a></main></body></html>');
+    const origin = publicOrigin(true);
+    const shell = await fetch(new URL('/index.html', origin), { signal: AbortSignal.timeout(8000), redirect: 'error' });
+    if (!shell.ok) throw new Error('Public HTML shell unavailable');
+    const template = await shell.text();
+    if (!template.includes('</head>') || !/id=["']root["']/.test(template)) throw new Error('Invalid public HTML shell');
+    return res.type('html').send(renderArticleHTML(template, article));
+  } catch (error) { error.statusCode ||= 503; next(error); }
+};

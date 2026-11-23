@@ -93,7 +93,7 @@ function generateSlug(text) {
 
 // Auto-generate slug before saving
 newsSchema.pre('save', async function(next) {
-    if (this.isModified('title') || !this.slug) {
+    if (!this.slug) {
         let baseSlug = generateSlug(this.title) || `article-${this._id}`;
         let slug = baseSlug;
         let counter = 1;
@@ -112,6 +112,7 @@ newsSchema.pre('save', async function(next) {
         this.publishedAt = new Date();
     }
     
+    require('../services/newsMetadata').applyMetadata(this);
     next();
 });
 

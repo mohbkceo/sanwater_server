@@ -22,6 +22,11 @@ test("invalid or reversed date ranges are rejected", () => {
   assert.throws(() => resolvePeriod({ from: "not-a-date", to: "2026-08-15" }), /Invalid analytics date range/);
   assert.throws(() => resolvePeriod({ from: "2026-08-16", to: "2026-08-15" }), /must be before/);
 });
+test('a population with no observed conversions is not labelled as winning or high converting',()=>{
+  const rows=classifyProducts([{uniqueViews:100,orderConversionRate:0},{uniqueViews:200,orderConversionRate:0}]);
+  assert.ok(rows.every(row=>row.classification==='insufficient_data'));
+  assert.match(rows[0].reason,/No conversions/);
+});
 
 test("comparison never emits Infinity or NaN", () => {
   assert.deepEqual(comparison(0, 0), {

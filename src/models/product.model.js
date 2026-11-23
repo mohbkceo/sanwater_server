@@ -2,6 +2,7 @@ const mongoose = require('mongoose')
 const DocumentEntrySchema = require('./shared/documentEntry.schema')
 const SeoSchema = require('./shared/seo.schema')
 const slugify = require('../utils/slugify')
+const variantSchemas = require('./shared/productVariants.schema');
 
 const VariantValue  = new mongoose.Schema({
     variantData: {type: String},
@@ -31,8 +32,15 @@ const productSchema = new mongoose.Schema({
     serialNumber: {type: String, unique: true, required: true},
     isActive: {type: Boolean, default: true},
     isEcommerce : { type: Boolean, default: false },
+    salesMode: { type: String, enum: ['catalog', 'ecommerce', 'both'], default: undefined },
+    commerce: { type: require('./shared/commerce.schema'), default: undefined },
     tags: { type: [String], default: [] },
     gallery: { type: [String], default: [] },
+    variantSchemaVersion: { type: Number, enum: [2], default: undefined },
+    variantOptions: { type: [variantSchemas.option], default: undefined },
+    variantsV2: { type: [variantSchemas.variant], default: undefined },
+    legacyVariantSnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    catalogRevision: { type: Number, default: 0, min: 0 },
     productVariants: {
         type: [ProductVariants],
         default: []
@@ -68,6 +76,19 @@ const productSchema = new mongoose.Schema({
     seo: { type: SeoSchema, default: () => ({}) },
 
 }, {timestamps: true})
+productSchema.index({ 'commerce.variants.sku': 1 }, { unique: true, partialFilterExpression: { 'commerce.variants.sku': { $type: 'string' } } });
+productSchema.index({ updatedAt: -1, _id: -1 });
+productSchema.index({ status: 1, isActive: 1, isEcommerce: 1, updatedAt: -1 });
+productSchema.pre('validate', function validateStructuredVariants(next) {
+    try {
+        if (this.variantSchemaVersion === 2) {
+            const { validateVariants, commerceProjection } = require('../services/products/variants');
+            validateVariants(this.variantOptions || [], this.variantsV2 || [], this.gallery);
+            if (this.variantsV2?.length) this.commerce = commerceProjection(this.toObject());
+        }
+        next();
+    } catch (error) { next(error); }
+});
 
 // Auto-generate a slug from the product name (falling back to the SKU/
 // productId when no name is set) the first time it's missing. Never

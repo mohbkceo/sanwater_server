@@ -18,7 +18,7 @@ async function submit(req, res, next) {
     if (!mongoose.isValidObjectId(req.params.id)) return res.sendStatus(400);
     const { value, error } = submissionSchema.validate(req.body);
     if (error) return res.status(400).json({ success: false, message: 'Invalid application' });
-    const position = await Hiring.findOne({ _id: req.params.id, status: 'published' }).select('_id');
+    const position = await Hiring.findOne({ _id: req.params.id, status: 'published', deletedAt: null }).select('_id');
     if (!position) return res.sendStatus(404);
     const sessionId = unsign(req.cookies?.[SESSION_COOKIE]);
     const session = sessionId ? await AnalyticsSession.findOne({ sessionId }).lean() : null;

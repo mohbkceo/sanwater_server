@@ -1,4 +1,11 @@
 const PERMISSIONS = {
+  ECOMMERCE: {
+    VIEW: 'ecommerce.view', VIEW_ALL: 'ecommerce.viewAll', CREATE: 'ecommerce.create', EDIT: 'ecommerce.edit',
+    CONFIRM: 'ecommerce.confirm', CANCEL: 'ecommerce.cancel', FULFILL: 'ecommerce.fulfill', SHIP: 'ecommerce.ship',
+    ASSIGN: 'ecommerce.assign', ISSUE: 'ecommerce.issue', RESOLVE: 'ecommerce.resolve', PAYMENT: 'ecommerce.payment',
+    INVENTORY: 'ecommerce.inventory', IMPORT: 'ecommerce.import', CUSTOMERS: 'ecommerce.customers',
+    REPORTS: 'ecommerce.reports', OVERRIDE_PRICE: 'ecommerce.overridePrice',
+  },
   ANALYTICS: {
     VIEW: 'analytics.view',
     MANAGE: 'analytics.manage',

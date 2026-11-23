@@ -1,0 +1,78 @@
+# E-commerce operations and rollout
+
+## Architecture
+
+Sanwater keeps its Express/Mongoose application and MongoDB connection. `ProductSchema` remains the only catalog. `EcommerceOrder` is the commercial record for landing/storefront checkout, staff entry, import, and explicit Lead/approved Quotation conversion. Customers are resolved by normalized Algerian phone, including business fixed lines. Format validation follows the [ARPCE numbering plan](https://www.arpce.dz/en/service/num). There is no second application, database, or courier service.
+
+The LogiX models, order/tracking/import/delivery/analytics services, routes, shared tracking/permissions, Orders/Tracking/ImportData pages, and tracking documentation were inspected through the GitHub connector. Adapted concepts include immutable commercial snapshots, counters allocated outside transactions, revision checks, independent fulfillment/courier/payment states, blocking issues, scoped queries, and import preview/commit. LogiX code and its provider-specific readiness/deletion behavior were not copied or changed.
+
+### Catalog and publication
+
+- Existing products without `commerce` retain their legacy public catalog rules, hierarchy, IDs, serials, URLs, descriptions, specifications, galleries, documents and textual `productVariants`.
+- New commerce publication is explicit. A purchase requires `isActive`, `commerce.published`, `salesMode=ecommerce|both`, an enabled exact variant, and a valid configured price. Legacy `isEcommerce` alone never authorizes checkout.
+- `salesMode=catalog|ecommerce|both` is synchronized with the legacy catalog flag. The separate technical editor remains available. An inactive existing product must be explicitly activated there before commerce publication.
+- An optionless product has one real sellable variant. No prices or stock are fabricated for old textual options. Up to four option types and 100 combinations are supported. Combination identity is stable; existing IDs cannot be reassigned to different option values. SKUs are unique across products.
+- One optional offer applies automatically: percentage, fixed amount per unit, or fixed amount per unit after a quantity threshold. Dates are optional. Offers never stack; discounts cannot make merchandise negative. Authorized manual price overrides require an audit reason and replace the automatic offer on that line.
+
+### Orders, concurrency, and history
+
+`domain.js` defines transitions and permissions. `order.service.js` handles all channels and returns available transitions/operations. NEW → CONFIRMED → PREPARING → READY_TO_SHIP → SHIPPED → OUT_FOR_DELIVERY → DELIVERED is the ordinary flow. Failed delivery can be retried or returned. Delivered orders can enter an explicitly reasoned return flow; returned/cancelled records cannot be reopened.
+
+Manufacturing is optional per product or explicit staff order. Such orders must start and finish IN_PRODUCTION before readiness. No Answer/Postponed are confirmation attempts, with follow-up dates, rather than commercial states. Critical/blocking issues stop unsafe progress. Resolution, notes, assignment, importance, shipment observations and payments have independent permissions and append audit entries.
+
+Order items snapshot product/variant identity, name, SKU, options, price and discount. Orders store delivery and tariff snapshots. Creation and edits retain earlier financial/item values in append-only service-managed history. No update/delete-history API is exposed. Product adjustments and customer changes are audited too.
+
+Every write is checked against the expected order/product/import revision. Action request IDs are replay-safe and bound to their payload. Creation idempotency keys are scoped to the public channel or staff actor; reusing a key with different data returns 409. Order numbers come from an atomic counter outside the transaction, so aborted operations leave gaps and never reuse numbers.
+
+### Inventory and money
+
+Stock quantities represent available units, excluding held reservations. Submission checks availability; confirmation checks current availability and tracking configuration and atomically reserves tracked lines with conditional updates. A tracking change after submission cannot bypass reservation. Cancellation releases a reservation once. Shipping consumes the hold without deducting stock again. A received return remains unavailable until an authorized employee records an inspection/restock reason. Products with held units cannot be deleted, and reserved variants cannot be removed or have tracking disabled. Untracked variants impose no stock restriction.
+
+Payments record customer receipts, courier collections and refunds separately. Delivery never marks an order paid. Overpayments and refunds above received funds are rejected. Partial receipts require `ECOMMERCE_PARTIAL_PAYMENTS=true`. No payment gateway is fabricated. Cancelled/returned orders have zero amount due; refunds remain explicitly recorded.
+
+Reports use order creation dates as a UTC cohort and current state for that cohort. Confirmation rate = ever confirmed / all orders. Delivery success = delivered / (delivered + returned). Gross sales are confirmed merchandise excluding cancellations. Realized revenue is current delivered merchandise after discounts and refunds, capped at zero. Refunds reduce merchandise first, then shipping; returned/cancelled revenue is zero. Product refunds are allocated proportionally across merchandise lines. Shipping is excluded from revenue. AOV uses delivered merchandise before refunds. Outstanding collections cover delivered orders. Both existing business analytics services now use Orders for sales while retaining lead-generation and pipeline metrics; converted Leads are not counted again as sales.
+
+### Delivery
+
+The manual adapter records agency, tracking reference and unmodified external state text. Agency/reference are required before shipping. Fulfillment, commercial status, and external state remain separate. No request is made to a courier, no courier status vocabulary is invented, and external parcel deletion cannot delete an Order. An unsupported adapter fails explicitly. Existing Wilaya/Commune/Home/Stop Desk/office tariffs remain authoritative.
+
+## API and permissions
+
+All routes are under `/ecommerce`. Public routes: `GET /products`, `GET /products/:reference`, `POST /quote`, `POST /checkout`. Checkout accepts an `Idempotency-Key`, exact product/variant lines, customer details, delivery and the last server `expectedQuote` fingerprint. Submission recalculates everything and rejects changed prices/tariffs with 409. The response contains only the reference, state and totals. There is no public order lookup by sequential reference.
+
+Admin routes use existing cookies, current database permissions, and CSRF checks. Major resources are `/catalog`, `/catalog/variants`, `/catalog/price-preview`, `/admin/quote`, `/orders`, `/orders/:id/actions`, `/orders/bulk/action`, `/customers`, `/reports`, `/imports`, `/settings` and `/conversions/:kind/:id`. Lists are paginated on the server. Bulk operations return individual successes/errors and use the ordinary lifecycle service.
+
+Grant `ecommerce.view` plus the relevant action permissions in existing User Management. `ecommerce.viewAll` grants global order/customer visibility; otherwise reads/mutations are limited to orders created by or assigned to the employee. Grant viewAll deliberately to staff who must handle unassigned public orders. Customer access also requires `ecommerce.customers`; imports require `ecommerce.import` and creation permission to commit; updating an existing unconfirmed import also requires edit permission. Catalog editing reuses `products.manage`. Price overrides require `ecommerce.overridePrice`. Super admins retain their existing bypass. No existing account is silently granted permissions.
+
+Public submission limits and a checkout honeypot apply. Proxy trust now defaults to loopback rather than unrestricted forwarded headers. Before rollout, configure `TRUST_PROXY` to the deployment's verified proxy CIDRs/list, and verify forwarded-IP behavior. Do not set it indiscriminately to `true`.
+
+## Import
+
+Upload → map/preview → confirm selected rows. UTF-8 CSV, XLS and XLSX use [SheetJS 0.20.3 from its official distribution](https://docs.sheetjs.com/docs/getting-started/installation/nodejs/). Arabic CSV names are covered by a regression test. Upload is raw `application/octet-stream` with URL-encoded `X-File-Name`; it is authenticated and CSRF-protected. Files are capped at 5 MB, 1,000 rows and 64 columns; parsed batch data is capped at 8 MB to stay within MongoDB document limits. XLSX entries are decompressed with explicit limits (25 MB total), encrypted/unsupported archives are rejected, and parsing runs in a worker with a memory cap and five-second deadline. The first worksheet is used.
+
+The downloadable CSV template lists canonical columns. Map other column headers, product names/SKUs, variants and locations in the preview. Exact SKUs/IDs/codes are supported; multiple variants are never guessed. Phones normalize before duplicate/customer matching. Source references are preferred; absent references use a deterministic normalized row fingerprint. Duplicate detection cannot establish identity for an arbitrarily altered row without a reliable external reference: supply stable references for reconciliation.
+
+Imports default to creating NEW orders and skipping existing records. Explicitly enable updates only for existing NEW imported orders; updates pass through the ordinary edit service, require the original revision, preserve earlier snapshots, and are replay-safe. Confirmed and terminal orders cannot be overwritten. Historical states other than NEW require manual review; no lifecycle dates are inferred. Import preview revisions prevent committing a mapping that changed in another session. Original rows, batches and individual results are retained; a bad row does not prevent eligible rows from succeeding. One row represents one order/item; multi-item orders are available in staff checkout.
+
+## Rollout and migration
+
+No production database, deployment, or production configuration was touched during implementation or QA.
+
+1. Back up the relevant collections and verify restoration before any production migration. Review new indexes and SKU uniqueness on staging. Install dependencies with the committed pnpm lockfile. Index creation during normal application initialization is a deployment decision; no migration command silently provisions indexes.
+2. Verify that the existing MongoDB deployment supports transactions (replica set or mongos). The Settings screen reports capability; writes fail closed with 503 on standalone MongoDB. No topology is changed automatically.
+3. Configure permissions and verify trusted proxies. Explicitly publish eligible products and real variants. Existing legacy product flags alone do not publish commerce.
+4. Keep `ECOMMERCE_CHECKOUT_ENABLED` unset/false until backend/frontend and tariffs are verified. Set it to `true` only during the authorized cutover. This enables real checkout and makes the old delivery-bearing `/quotations` checkout return an upgrade-required 409 with a successor link. Ordinary B2B Request Quote remains operational. Legacy checkout behavior is retained while the flag is off for compatibility with the previous frontend.
+5. Read-only migration report, against the operator-selected database: `pnpm migrate:ecommerce --dry-run > migration-report.json`. Connection options disable automatic collection/index creation. Review every decision.
+6. Only explicit `landing_product_page` records with a single identified item, consistent stored prices/delivery, valid phone, and an untouched submitted status are eligible. B2B records remain Quotations. Ambiguous or progressed records are reported for manual review. The original Quotation ID/data/timestamps are retained; migration uses stored prices and links by unique `sourceRecord` without changing the Quotation. It never consults current prices or invents an old variant/fulfillment stage.
+7. Applying requires separate authorization, a verified backup, and existing unique order indexes: `pnpm migrate:ecommerce --apply --authorized --backup <backup-manifest-file>`. The file check only proves the manifest exists; the operator must verify the backup. The tool is idempotent and never runs at application startup. This command was not run against production.
+8. Migrated orders are LEGACY_UNINITIALIZED. Staff must deliberately map current variants and review an edit before confirmation. Retain agreed historical prices through an explicitly permissioned override if required. Original snapshots remain in originalData/history.
+
+Rollback: set checkout false to stop new public Order submissions, and restore the previous frontend if legacy checkout must resume. Continue managing already-created Orders in the admin. Do not delete Orders, reuse counters, reverse stock through direct database edits, or bulk transform Quotations. Investigate ambiguous history manually. Disabling checkout does not undo data.
+
+## Verification and limits
+
+`pnpm test` runs regression and isolated replica-set integration tests. `pnpm check` checks backend/test syntax; Express has no compilation/build step and this repository has no ESLint configuration. `pnpm qa:ecommerce` starts an explicitly disposable local database/API at port 4100 with generated local signing keys and synthetic fixtures. It does not read MONGO_URI. Run the frontend with `VITE_BACK_END_BASE_URL=http://localhost:4100` for browser QA. Stop both processes after testing.
+
+The reference and real production topology were not modified. Courier APIs and online payments remain intentionally absent pending verified integration contracts. Importing historical statuses is deliberately a review operation; multi-item spreadsheet grouping is not implemented. Reports compute selected cohorts on the server but have not been load-tested at production volume. Permission/CSRF/B2B/inventory/import behavior has automated coverage; production hosting, live image storage and real courier/payment services were not exercised by local QA.
+
+Security dependency updates include current compatible Express/Joi/Mongoose/sanitizer/Axios releases, Cloudinary 2.11.0 and Multer 2.5.0. The legacy image-storage adapter was replaced with the documented Multer storage-engine interface while preserving the same streaming Cloudinary service, upload URL and response metadata. Storage and multipart HTTP regression tests use a provider stub without uploading real assets. The frontend uses patched React Router 7.18.5 with its existing declarative routes; existing route/UI tests and browser navigation passed. Production dependency audits for both repositories report zero known advisories; saved results are in `docs/dependency-audit.json`.

@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Event = require("../models/event.model");
 const Lead = require("../models/lead.model");
 const Product = require("../models/product.model");
+const Order = require('../models/ecommerceOrder.model');
 const {
   MAX_ACTIVE_INSIGHTS,
   MATERIAL_PERCENTAGE_CHANGE,
@@ -45,13 +46,11 @@ function buildStageMatch(statuses, from, to) {
 }
 
 function buildOrderMatch(from, to) {
-  return {
-    $and: [
-      { status: { $in: VALID_ORDER_LEAD_STATUSES } },
-      buildStageMatch(VALID_ORDER_LEAD_STATUSES, from, to),
-    ],
-  };
+  return { commercialStatus: { $nin: ['NEW', 'CANCELLED'] }, createdAt: mongoRange(from, to) };
 }
+const realizedRevenue = { $cond: [{ $eq: ['$commercialStatus', 'DELIVERED'] }, { $max: [0, { $subtract: [{ $subtract: ['$financials.subtotal', '$financials.discount'] }, '$payment.refunded'] }] }, 0] };
+const merchandiseRevenue = { $subtract: ['$financials.subtotal', '$financials.discount'] };
+const realizedLineRevenue = { $cond: [{ $gt: [merchandiseRevenue, 0] }, { $multiply: ['$items.lineTotal', { $divide: [realizedRevenue, merchandiseRevenue] }] }, 0] };
 
 async function uniqueEventVisitors(from, to, type = "page_view") {
   const rows = await Event.aggregate([
@@ -73,14 +72,14 @@ async function commercialMetrics(from, to) {
       { $group: { _id: "$visitorId" } },
       { $count: "count" },
     ]),
-    Lead.aggregate([
+    Order.aggregate([
       { $match: orderMatch },
       {
         $group: {
           _id: null,
           orders: { $sum: 1 },
-          revenue: { $sum: { $ifNull: ["$finalValue", 0] } },
-          ordersWithoutRevenue: { $sum: { $cond: [{ $eq: [{ $ifNull: ["$finalValue", null] }, null] }, 1, 0] } },
+          revenue: { $sum: realizedRevenue },
+          ordersWithoutRevenue: { $sum: 0 },
         },
       },
     ]),
@@ -217,6 +216,12 @@ async function aggregateProductEvents(from, to) {
 }
 
 async function aggregateProductLeads(from, to, statuses, requireCurrentStatus = false) {
+  if (requireCurrentStatus) return Order.aggregate([
+    { $match: buildOrderMatch(from, to) }, { $unwind: '$items' },
+    { $group: { _id: { order: '$_id', product: '$items.productId' }, productName: { $first: '$items.name' },
+      revenue: { $sum: realizedLineRevenue } } },
+    { $group: { _id: { $toString: '$_id.product' }, productName: { $first: '$productName' }, count: { $sum: 1 }, revenue: { $sum: '$revenue' } } },
+  ]);
   return Lead.aggregate([
     { $match: requireCurrentStatus ? { $and: [{ status: { $in: statuses } }, buildStageMatch(statuses, from, to)] } : buildStageMatch(statuses, from, to) },
     {
@@ -294,6 +299,9 @@ async function aggregateVisitorsBySource(from, to) {
 }
 
 async function aggregateLeadsBySource(from, to, statuses, requireCurrentStatus = false) {
+  if (requireCurrentStatus) return Order.aggregate([
+    { $match: buildOrderMatch(from, to) }, { $group: { _id: '$source', count: { $sum: 1 }, revenue: { $sum: realizedRevenue } } },
+  ]);
   return Lead.aggregate([
     { $match: requireCurrentStatus ? { $and: [{ status: { $in: statuses } }, buildStageMatch(statuses, from, to)] } : buildStageMatch(statuses, from, to) },
     {
@@ -347,6 +355,10 @@ async function aggregateVisitorTrend(period) {
 }
 
 async function aggregateLeadTrend(period, statuses, includeRevenue = false) {
+  if (includeRevenue) return Order.aggregate([
+    { $match: buildOrderMatch(period.from, period.to) },
+    { $group: { _id: bucketExpression(period.granularity, '$createdAt'), count: { $sum: 1 }, revenue: { $sum: realizedRevenue } } },
+  ]);
   return Lead.aggregate([
     ...(includeRevenue ? [{ $match: { status: { $in: statuses } } }] : []),
     { $unwind: "$statusHistory" },
@@ -485,11 +497,11 @@ async function getBusinessAnalytics({ from, to } = {}) {
     period: serializePeriod(period),
     definitions: {
       qualifiedLeadStatuses: QUALIFIED_LEAD_STATUSES,
-      orderEntity: "lead",
-      validOrderStatuses: VALID_ORDER_LEAD_STATUSES,
-      orderDefinition: "Closed-won CRM leads",
-      revenueDefinition: "Final value recorded on closed-won CRM leads",
-      attribution: "Lead → Order is deterministic because the commercial outcome is stored on the same lead. A fulfilled Order model is not currently available.",
+      orderEntity: "ecommerceOrder",
+      validOrderStatuses: 'All confirmed commercial orders except cancelled',
+      orderDefinition: 'Real Orders, attributed to creation date; leads remain lead-generation metrics',
+      revenueDefinition: 'Delivered merchandise less refunds; shipping excluded',
+      attribution: 'Explicit sourceRecord links prevent double counting conversions. Legacy won leads are not counted as orders.',
     },
     kpis,
     trend,
@@ -532,15 +544,15 @@ async function getFunnelBreakdown({ from, to, stage, dimension }) {
   }
   if (stage === "order") {
     if (dimension === "device") {
-      return { stage, dimension, available: false, reason: "CRM leads do not currently store device class.", rows: [] };
+      return { stage, dimension, available: false, reason: "Orders do not store device class.", rows: [] };
     }
     const leadDimensions = {
-      product: { $ifNull: ["$productName", "unknown"] },
+      product: { $ifNull: [{ $arrayElemAt: ['$items.name', 0] }, "unknown"] },
       source: { $ifNull: ["$source", "direct"] },
       campaign: { $ifNull: ["$campaign", "unattributed"] },
       landingPage: { $ifNull: ["$landingPage", "unknown"] },
     };
-    const rows = await Lead.aggregate([
+    const rows = await Order.aggregate([
       { $match: buildOrderMatch(period.from, period.to) },
       { $group: { _id: leadDimensions[dimension], count: { $sum: 1 } } },
       { $sort: { count: -1 } },

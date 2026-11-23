@@ -54,6 +54,7 @@ const leadSchema = new mongoose.Schema({
   lostReason: { type: String, enum: LOST_REASONS, default: null },
   lostExplanation: { type: String, trim: true, default: null, maxlength: 1000 },
   orderReference: { type: String, trim: true, default: null, maxlength: 120 },
+  convertedOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'EcommerceOrder', default: null },
   statusHistory: { type: [StatusHistorySchema], default: [] },
   assignmentHistory: { type: [AssignmentHistorySchema], default: [] },
 

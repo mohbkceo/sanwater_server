@@ -14,6 +14,11 @@ const { quote } = require('../../services/shipping.service');
 const createQuotation = async (req, res, next) => {
     try {
         const { items, requester, source, delivery } = req.body;
+        if (delivery && process.env.ECOMMERCE_CHECKOUT_ENABLED === 'true') {
+            res.set('Deprecation', 'true');
+            res.set('Link', '</ecommerce/checkout>; rel="successor-version"');
+            throw new CostumeExption('Please reopen the product checkout to select a sellable variant and review the current total.', 409, 'CHECKOUT_UPGRADE_REQUIRED');
+        }
         let finalItems = items;
         let finalRequester = requester;
         let shippingSnapshot = null;

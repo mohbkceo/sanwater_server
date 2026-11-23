@@ -10,6 +10,7 @@ const validate = require('../middlewares/validators/validate');
 router.get('/', controller.getAllNews);
 router.get('/sitemap.xml', generateSitemap);
 router.get('/article/:slug', controller.getNewsBySlug);
+router.get('/render/:slug', controller.publicHTML);
 router.get('/admin/all', authSanWater, authorize(PERMISSIONS.CONTENT.VIEW), controller.getAllNews);
 router.get('/admin/:id', authSanWater, authorize(PERMISSIONS.CONTENT.VIEW), controller.getAdminNewsById);
 router.get('/admin/:id/revisions', authSanWater, authorize(PERMISSIONS.CONTENT.VIEW), controller.listRevisions);

@@ -41,3 +41,21 @@ exports.ImportBatch = model(
     { timestamps: true, optimisticConcurrency: true },
   ),
 );
+
+// Store-wide E-commerce switches edited in the admin (one document, "store").
+// An unset field means nobody has chosen yet: the matching environment
+// variable stays the default, so deploying this changes no behaviour.
+exports.CommerceSettings = model(
+  "CommerceSettings",
+  new Schema(
+    {
+      _id: String,
+      checkoutEnabled: Boolean,
+      partialPaymentsEnabled: Boolean,
+      revision: { type: Number, default: 0 },
+      updatedBy: Schema.Types.ObjectId,
+      history: { type: [Object], default: [] },
+    },
+    { timestamps: true },
+  ),
+);

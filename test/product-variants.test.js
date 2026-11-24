@@ -363,6 +363,7 @@ test("frontend and backend variant contracts remain byte-for-byte equivalent", (
   const frontend = fs
     .readFileSync(path.join(root, "client/src/lib/productVariants.js"), "utf8")
     .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
     .trim()
     .replace("export {", "module.exports = {");
   const backend = fs
@@ -370,6 +371,7 @@ test("frontend and backend variant contracts remain byte-for-byte equivalent", (
       path.join(root, "server/src/services/products/variants.js"),
       "utf8",
     )
+    .replace(/\r\n/g, "\n")
     .trim();
   assert.equal(frontend, backend);
 });

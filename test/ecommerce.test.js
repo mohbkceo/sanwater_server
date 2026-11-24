@@ -1,6 +1,6 @@
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
-const { randomUUID } = require("node:crypto");
+const { generateKeyPairSync, randomUUID } = require("node:crypto");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const request = require("supertest");
@@ -247,28 +247,34 @@ test("single nonstacking offers have dates and correct percentage, fixed and qua
   p.commerce.offer = { enabled: true, type: "percentage", value: 101 };
   assert.throws(() => domain.validateCommerce(p.commerce, 100));
 });
-test("public checkout stores Order with sanitized receipt, replay protection and unified customer", async (t) => {
-  const input = await payload(),
-    idempotency = key();
-  const a = await request(app)
-    .post("/ecommerce/checkout")
-    .set("Idempotency-Key", idempotency)
-    .send(input)
-    .expect(201);
-  const b = await request(app)
-    .post("/ecommerce/checkout")
-    .set("Idempotency-Key", idempotency)
-    .send(input)
-    .expect(201);
+test("concurrent landing checkout creates one order, visible and actionable to authorized staff", async (t) => {
+  const cart = {
+    items: [{ productId: String(product._id), variantId: product.commerce.variants[0].id, quantity: 2 }],
+    delivery: { wilayaCode: "16", communeCode: "01", deliveryType: "stopDesk", officeCode: "A" },
+  };
+  const quote = (await request(app).post("/ecommerce/quote").send(cart).expect(200)).body.data;
+  const input = {
+    ...cart, customer: { name: "Test Client", phone: "0550123456" },
+    expectedQuote: quote.quoteFingerprint, source: "landing", website: "",
+  };
+  const idempotency = key();
+  const quotationCount = await Quotation.countDocuments();
+  const submit = () => request(app).post("/ecommerce/checkout")
+    .set("Idempotency-Key", idempotency).send(input).expect(201);
+  const [a, b] = await Promise.all([submit(), submit()]);
   assert.equal(a.body.data.orderNumber, b.body.data.orderNumber);
   assert.equal(a.body.data.customer, undefined);
   assert.equal(a.body.data._id, undefined);
+  assert.equal(a.body.data.commercialStatus, "NEW");
   assert.equal(a.body.data.financials.total, 400);
+  assert.equal(await Order.countDocuments({ idempotencyKey: `public:${idempotency}` }), 1);
+  assert.equal(await Quotation.countDocuments(), quotationCount);
   const changed = await request(app)
     .post("/ecommerce/checkout")
     .set("Idempotency-Key", idempotency)
     .send({ ...input, customer: { ...input.customer, name: "Changed Name" } });
   assert.equal(changed.status, 409);
+  assert.equal(changed.body.code, "IDEMPOTENCY_CONFLICT");
   const duplicate = await orders.create(
     { ...input, customer: { ...input.customer, phone: "00213550123456" } },
     key(),
@@ -280,6 +286,37 @@ test("public checkout stores Order with sanitized receipt, replay protection and
   }).lean();
   assert.equal(String(one.customerId), String(duplicate.customerId));
   assert.equal(one.items[0].sku, product.commerce.variants[0].sku);
+  assert.equal(one.source, "landing");
+  assert.equal(one.delivery.office.code, "A");
+  assert.equal(one.assignment, undefined);
+
+  const staff = await User.create({
+    role: "admin", fullName: "Order Handler", email: "handler@example.test",
+    password: "test-only", permissions: ["ecommerce.view", "ecommerce.viewAll", "ecommerce.confirm"],
+  });
+  const pair = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const originalPublicKey = process.env.PUBLIC_KEY;
+  process.env.PUBLIC_KEY = pair.publicKey.export({ type: "spki", format: "pem" });
+  t.after(() => { process.env.PUBLIC_KEY = originalPublicKey; });
+  const token = require("jsonwebtoken").sign(
+    { uid: String(staff._id), role: staff.role, type: "access" }, pair.privateKey, { algorithm: "RS256" },
+  );
+  const cookie = `access_token=${token}; csrf_token=local-nonce`;
+  const list = () => request(app).get("/ecommerce/orders")
+    .query({ source: "landing", search: one.orderNumber }).set("Cookie", cookie).expect(200);
+  const listing = (await list()).body.data;
+  assert.equal(listing.count, 1);
+  assert.equal(listing.orders[0].items[0].variantId, cart.items[0].variantId);
+  const detailUrl = `/ecommerce/orders/${one._id}`;
+  const visible = (await request(app).get(detailUrl).set("Cookie", cookie).expect(200)).body.data;
+  assert.ok(visible.availableActions.includes("CONFIRMED"));
+  const confirmed = await request(app).post(`${detailUrl}/actions`).set("Cookie", cookie)
+    .set("X-CSRF-Token", "local-nonce")
+    .send({ revision: visible.revision, requestId: key(), action: "transition", target: "CONFIRMED" }).expect(200);
+  assert.equal(confirmed.body.data.commercialStatus, "CONFIRMED");
+  await User.updateOne({ _id: staff._id }, { $pull: { permissions: "ecommerce.viewAll" } });
+  assert.equal((await list()).body.data.count, 0);
+  await request(app).get(detailUrl).set("Cookie", cookie).expect(404);
 });
 test("multiple lines, malicious status/discount and price override permissions are checked server-side", async () => {
   const other = await makeProduct(),
@@ -951,4 +988,73 @@ test('confirmation honors stock tracking enabled after submission and prevents l
   assert.equal((await Product.findById(p._id).lean()).commerce.variants[0].quantity, 0);
   await assert.rejects(transition(later, 'CONFIRMED'));
   assert.equal(confirmed.items[0].unitPrice, earlier.items[0].unitPrice);
+});
+
+test("a tagged landing visit is attributed on the order through the signed analytics session", async () => {
+  process.env.ANALYTICS_COOKIE_SECRET ||= "ecommerce-test-analytics-secret";
+  const cart = {
+    items: [{ productId: String(product._id), variantId: product.commerce.variants[0].id, quantity: 1 }],
+    delivery: { wilayaCode: "16", communeCode: "01", deliveryType: "stopDesk", officeCode: "A" },
+  };
+  const visit = await request(app).post("/analytics/track").send({
+    name: "page_viewed", path: `/products/landing_product/${product.serialNumber}`,
+    acquisition: { source: "instagram", medium: "paid_social", campaign: "summer_promotion", content: "reel_01" },
+  }).expect(204);
+  const cookies = visit.headers["set-cookie"].map((cookie) => cookie.split(";")[0]).join("; ");
+  const quote = (await request(app).post("/ecommerce/quote").send(cart).expect(200)).body.data;
+  const input = { ...cart, customer: { name: "Campaign Client", phone: "0661234567" }, expectedQuote: quote.quoteFingerprint, source: "landing", website: "" };
+  const tagged = await request(app).post("/ecommerce/checkout").set("Cookie", cookies).set("Idempotency-Key", key()).send(input).expect(201);
+  const order = await Order.findOne({ orderNumber: tagged.body.data.orderNumber }).lean();
+  assert.equal(order.source, "landing");
+  assert.equal(order.attribution.source, "instagram");
+  assert.equal(order.attribution.medium, "paid_social");
+  assert.equal(order.attribution.campaign, "summer_promotion");
+  assert.equal(order.attribution.content, "reel_01");
+  assert.equal(order.attribution.channel, "Paid Social");
+  assert.equal(order.attribution.model, "session");
+  assert.equal(order.campaign, "summer_promotion");
+  assert.equal(JSON.stringify(order.attribution).includes("Campaign Client"), false);
+
+  const anonymous = await request(app).post("/ecommerce/checkout").set("Idempotency-Key", key())
+    .send({ ...input, customer: { name: "Direct Client", phone: "0661234568" } }).expect(201);
+  const direct = await Order.findOne({ orderNumber: anonymous.body.data.orderNumber }).lean();
+  assert.equal(direct.attribution, undefined);
+  assert.equal(await Order.countDocuments({ orderNumber: { $in: [order.orderNumber, direct.orderNumber] } }), 2);
+});
+
+test("store settings persist in MongoDB with compare-and-swap revisions and drive checkout", async (t) => {
+  t.mock.method(TokenServices.prototype, "verify", async function () {
+    return { uid: this.token, role: "super_admin", type: "access" };
+  });
+  const { CommerceSettings } = require("../src/models/commerceSupport.model");
+  await CommerceSettings.deleteMany({});
+  t.after(() => CommerceSettings.deleteMany({}));
+  const as = (method) => request(app)[method]("/ecommerce/settings")
+    .set("Cookie", `access_token=${user.uid}; csrf_token=local-test`).set("X-CSRF-Token", "local-test");
+  const initial = (await as("get").expect(200)).body.data;
+  assert.equal(initial.checkoutEnabled, true, "environment default before any admin change");
+  assert.equal(initial.sources.checkoutEnabled, "environment");
+  assert.equal(initial.transactionsAvailable, true);
+  const [a, b] = await Promise.all([
+    as("patch").send({ revision: 0, checkoutEnabled: false }),
+    as("patch").send({ revision: 0, partialPaymentsEnabled: true }),
+  ]);
+  assert.deepEqual([a.status, b.status].sort(), [200, 409]);
+  const saved = (await as("get").expect(200)).body.data;
+  assert.equal(saved.revision, 1);
+  assert.equal(await CommerceSettings.countDocuments(), 1);
+  const disabled = !saved.checkoutEnabled;
+  if (disabled) {
+    const cart = { items: [{ productId: String(product._id), variantId: product.commerce.variants[0].id, quantity: 1 }], delivery: { wilayaCode: "16", communeCode: "01", deliveryType: "stopDesk", officeCode: "A" } };
+    const quote = (await request(app).post("/ecommerce/quote").send(cart).expect(200)).body.data;
+    const refused = await request(app).post("/ecommerce/checkout").set("Idempotency-Key", key())
+      .send({ ...cart, customer: { name: "Paused Client", phone: "0661234569" }, expectedQuote: quote.quoteFingerprint, source: "landing", website: "" });
+    assert.equal(refused.status, 503);
+  }
+  await as("patch").send({ revision: 1, checkoutEnabled: true, partialPaymentsEnabled: false }).expect(200);
+  const final = (await as("get").expect(200)).body.data;
+  assert.equal(final.checkoutEnabled, true);
+  assert.equal(final.partialPaymentsEnabled, false);
+  assert.equal(final.revision, 2);
+  assert.equal((await CommerceSettings.findById("store").lean()).history.length, 2);
 });

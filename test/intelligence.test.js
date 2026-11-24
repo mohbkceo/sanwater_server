@@ -90,6 +90,14 @@ test('public tracking validates event names and excludes admin paths and private
   const articleClick = tracking.browserEvent({ name: 'article_product_clicked', path: '/news/story', subject: { type: 'article', id: '507f1f77bcf86cd799439011' }, relatedProductId: '507f1f77bcf86cd799439012' }, { visitor: { visitorId: 'v', firstTouch: {}, lastTouch: {}, lastNonDirectTouch: null }, session: { sessionId: 's' } });
   assert.equal(articleClick.subject.type, 'article');
   assert.equal(articleClick.properties.relatedProductId, '507f1f77bcf86cd799439012');
+  const landingEvent = tracking.browserEvent({
+    name: 'landing_checkout_attempted', path: '/products/landing_product/SW-TEST-001',
+    subject: { type: 'product', id: '507f1f77bcf86cd799439011' },
+    properties: { productId: '507f1f77bcf86cd799439011', variantId: 'black-small', quantity: 2, deliveryType: 'home', customerName: 'Private name', phone: '+213555000000', address: 'Private address', errorCategory: 'stale' },
+  }, { visitor: { visitorId: 'v', firstTouch: {}, lastTouch: {}, lastNonDirectTouch: null }, session: { sessionId: 's' } });
+  assert.equal(landingEvent.name, 'landing_checkout_attempted');
+  assert.equal(landingEvent.subject.id, '507f1f77bcf86cd799439011');
+  assert.deepEqual(landingEvent.properties, { productId: '507f1f77bcf86cd799439011', variantId: 'black-small', quantity: 2, deliveryType: 'home', errorCategory: 'stale', path: '/products/landing_product/SW-TEST-001' });
 });
 
 test('persona never authorizes a domain, legacy analytics.view only implies read access', () => {

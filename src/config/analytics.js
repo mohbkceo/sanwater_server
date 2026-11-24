@@ -2,6 +2,11 @@ const BROWSER_EVENTS = Object.freeze([
   'page_viewed', 'product_viewed', 'product_inquiry_started', 'lead_form_started',
   'job_viewed', 'job_apply_clicked', 'article_viewed', 'article_product_clicked',
   'article_contact_clicked', 'article_reading_progress',
+  // Product landing funnel. A browser success event follows a confirmed
+  // receipt; the EcommerceOrder record remains the authoritative purchase.
+  'landing_product_viewed', 'landing_variant_selected', 'landing_quantity_changed',
+  'landing_delivery_selected', 'landing_checkout_started', 'landing_checkout_attempted',
+  'landing_checkout_succeeded', 'landing_checkout_failed', 'landing_quote_failed',
 ]);
 const BUSINESS_EVENTS = Object.freeze([
   'product_created', 'product_updated', 'product_published', 'product_archived', 'product_price_changed',

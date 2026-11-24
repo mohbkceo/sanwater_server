@@ -6,7 +6,7 @@ const {
 } = require("../../models/commerceSupport.model");
 const { resolveSubFamilyAssignment } = require("../taxonomy.service");
 const transaction = require("./transaction");
-const { assert, validateCommerce, combinationKey } = (() => {
+const { assert, validateCommerce, combinationKey, MAX_LINE_QUANTITY } = (() => {
   const d = require("./domain");
   return {
     ...d,
@@ -138,7 +138,9 @@ async function save(id, input, user) {
 }
 function publicProduct(product) {
   return {
-    metadata: require('../products/metadata')(product),
+    metadata: require("../products/metadata")(product, {
+      path: `/products/landing_product/${encodeURIComponent(product.serialNumber)}`,
+    }),
     _id: product._id,
     serialNumber: product.serialNumber,
     slug: product.slug,
@@ -156,9 +158,20 @@ function publicProduct(product) {
         price: v.price,
         image: v.image,
         available: !v.trackStock || v.quantity > 0,
+        maxQuantity: v.trackStock ? Math.min(MAX_LINE_QUANTITY, v.quantity) : MAX_LINE_QUANTITY,
       })),
     offer: product.commerce.offer,
     options: product.commerce.options,
   };
 }
-module.exports = { save, publicProduct };
+function publicProductDetails(product) {
+  const { shortDescription, material, finishes, dimensions, installation,
+    applications, specifications, family, subFamily } = product;
+  return {
+    ...publicProduct(product),
+    shortDescription, material, finishes, dimensions, installation,
+    applications, specifications, family, subFamily,
+    variantOptions: product.variantSchemaVersion === 2 ? product.variantOptions || [] : [],
+  };
+}
+module.exports = { save, publicProduct, publicProductDetails };

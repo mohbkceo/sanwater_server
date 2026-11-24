@@ -96,21 +96,42 @@ after(async () => {
   await repl?.stop();
 });
 test("create persists V2 and deterministic public compatibility without changing serial URLs", async () => {
-  const product = await create({ status: "published", isActive: true });
+  const rows = generateCombinations(options).variants;
+  Object.assign(rows[1], { priceOverride: 0, imageUrl: img, trackInventory: true, stockQuantity: 2 });
+  const product = await create({
+    status: "published", isActive: true, variantsV2: rows,
+    shortDescription: "Mitigeur mural", specifications: [{ label: "Hauteur", value: "20 cm" }],
+  });
   assert.equal(product.variantsV2.length, 2);
   assert.equal(product.commerce.variants.length, 2);
   assert.equal(product.productVariants[0].variantType, "Color");
   assert.equal(product.commerce.variants[0].price, null);
-  await request(app).get(`/products/${product.serialNumber}`).expect(200);
-  await request(app).get(`/products/${product.slug}`).expect(200);
-  const publicProduct = await request(app)
-    .get(`/ecommerce/products/${product.serialNumber}`)
-    .expect(200);
-  assert.equal(
-    publicProduct.body.data.variants[0].id,
-    product.variantsV2[0].id,
-  );
-  assert.equal(publicProduct.body.data.variants[0].available, true);
+  // E-commerce products are not part of the public catalog; their only
+  // public page is the landing page. Admin access is unchanged.
+  await request(app).get(`/products/${product.serialNumber}`).expect(404);
+  await request(app).get(`/products/${product.slug}`).expect(404);
+  await as("get", `/products/admin/${product.serialNumber}`).expect(200);
+  await request(app).get(`/ecommerce/products/${product.slug}`).expect(200);
+  const url = `/ecommerce/products/${product.serialNumber}?by=serial`;
+  const detail = (await request(app).get(url).expect(200)).body.data;
+  assert.deepEqual(detail.variantOptions, options);
+  assert.equal(detail.shortDescription, "Mitigeur mural");
+  assert.equal(detail.specifications[0].value, "20 cm");
+  assert.equal(detail.subFamily.name, subFamily.name);
+  assert.deepEqual(detail.variants.map(v => v.id), rows.map(v => v.id));
+  assert.equal(detail.variants[0].available, true);
+  assert.equal(detail.variants[0].maxQuantity, 1000);
+  assert.deepEqual(detail.variants[1].options, { Color: "White" });
+  assert.equal(detail.variants[1].price, 0);
+  assert.equal(detail.variants[1].image, img);
+  assert.equal(detail.variants[1].maxQuantity, 2);
+  await request(app).get(`/ecommerce/products/${product.slug}?by=serial`).expect(404);
+  await Product.updateOne({ _id: product._id }, { $set: { "commerce.variants.1.quantity": 0 } });
+  const changed = (await request(app).get(url).expect(200)).body.data;
+  assert.equal(changed.variants[1].available, false);
+  assert.equal(changed.variants[1].maxQuantity, 0);
+  await Product.updateOne({ _id: product._id }, { $set: { "commerce.published": false } });
+  await request(app).get(url).expect(404);
 });
 test("rename retains identity, zero overrides, stock and images and leaves canonical metadata stable", async () => {
   const product = await create();
@@ -142,6 +163,22 @@ test("rename retains identity, zero overrides, stock and images and leaves canon
     .send({ productVariants: [] })
     .expect(409);
   assert.equal(legacySave.body.code, "VARIANTS_V2_REQUIRED");
+});
+test("disabled checkout fails closed and still applies the public submission limit", async (t) => {
+  const previous = process.env.ECOMMERCE_CHECKOUT_ENABLED;
+  process.env.ECOMMERCE_CHECKOUT_ENABLED = "false";
+  t.after(() => {
+    if (previous === undefined) delete process.env.ECOMMERCE_CHECKOUT_ENABLED;
+    else process.env.ECOMMERCE_CHECKOUT_ENABLED = previous;
+  });
+  const Order = require("../src/models/ecommerceOrder.model");
+  const beforeCount = await Order.countDocuments();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const response = await request(app).post("/ecommerce/checkout").send({}).expect(503);
+    assert.equal(response.body.code, "CHECKOUT_DISABLED");
+  }
+  await request(app).post("/ecommerce/checkout").send({}).expect(429);
+  assert.equal(await Order.countDocuments(), beforeCount);
 });
 test("concurrent conflicting saves yield one success and one conflict", async () => {
   const product = await create();
@@ -377,4 +414,51 @@ test("real migration dry run makes no writes and repeated conversion is idempote
   assert.equal(saved.status, "draft");
   const repeated = await migrateVariants({ Product, dryRun: false });
   assert.equal(repeated.converted, 0);
+});
+
+test("catalog visibility hides ecommerce and both products from every public catalog surface", async () => {
+  const catalogProduct = await create({ isEcommerce: false, salesMode: "catalog", status: "published", isActive: true });
+  const ecommerce = await create({ salesMode: "ecommerce", status: "published", isActive: true });
+  const both = await create({ salesMode: "catalog", status: "published", isActive: true });
+  await Product.updateOne({ _id: both._id }, { $set: { salesMode: "both", isEcommerce: false } });
+  const legacyFlag = await Product.create({ author: "test", productId: `L-${randomUUID().slice(0, 6)}`, serialNumber: `legacy-${randomUUID()}`, name: "Legacy flag", isEcommerce: true, isActive: true, family: family._id, subFamily: subFamily._id });
+  const legacyCatalog = await Product.create({ author: "test", productId: `L-${randomUUID().slice(0, 6)}`, serialNumber: `legacy-${randomUUID()}`, name: "Legacy catalog", isActive: true, family: family._id, subFamily: subFamily._id });
+  await Product.collection.updateOne({ _id: legacyCatalog._id }, { $unset: { salesMode: "", isEcommerce: "" } });
+
+  const listed = (await request(app).get("/products?max=100").expect(200)).body.data.products.map((p) => p.serialNumber);
+  assert.ok(listed.includes(catalogProduct.serialNumber));
+  assert.ok(listed.includes(legacyCatalog.serialNumber));
+  for (const hidden of [ecommerce, both, legacyFlag]) {
+    assert.ok(!listed.includes(hidden.serialNumber), hidden.serialNumber);
+    await request(app).get(`/products/${hidden.serialNumber}`).expect(404);
+  }
+  const widened = (await request(app).get("/products?isEcommerce=true&max=100").expect(200)).body.data.products;
+  assert.ok(widened.every((p) => ![ecommerce.serialNumber, both.serialNumber, legacyFlag.serialNumber].includes(p.serialNumber)));
+  const searched = (await request(app).get(`/products?search=${encodeURIComponent(ecommerce.productId)}`).expect(200)).body.data.products;
+  assert.equal(searched.length, 0);
+
+  await Product.updateOne({ _id: catalogProduct._id }, { $set: { relatedProducts: [ecommerce._id, legacyCatalog._id] } });
+  const related = (await request(app).get(`/products/${catalogProduct.serialNumber}`).expect(200)).body.data.relatedProducts.map((p) => String(p._id));
+  assert.deepEqual(related, [String(legacyCatalog._id)]);
+
+  const tree = (await request(app).get("/families").expect(200)).body.data;
+  const visibleCount = await Product.countDocuments({ subFamily: subFamily._id, isActive: true, salesMode: { $nin: ["ecommerce", "both"] }, isEcommerce: { $ne: true }, $or: [{ commerce: { $exists: false } }, { commerce: null }, { "commerce.published": true }] });
+  const familyRow = tree.families.find((row) => String(row._id) === String(family._id));
+  assert.equal(familyRow.productCount, visibleCount);
+  assert.equal(familyRow.subFamilies.find((row) => String(row._id) === String(subFamily._id)).productCount, visibleCount);
+
+  const admin = (await as("get", "/products/admin?isEcommerce=true&limit=100").expect(200)).body.data.products.map((p) => p.serialNumber);
+  for (const hidden of [ecommerce, both, legacyFlag]) assert.ok(admin.includes(hidden.serialNumber));
+
+  // The dedicated landing lookup still serves the published E-commerce product,
+  // with the landing page as its generated canonical URL.
+  const origin = process.env.PUBLIC_SITE_ORIGIN;
+  process.env.PUBLIC_SITE_ORIGIN = "https://shop.example.test";
+  try {
+    const landing = (await request(app).get(`/ecommerce/products/${ecommerce.serialNumber}?by=serial`).expect(200)).body.data;
+    assert.equal(landing.metadata.canonicalUrl, `https://shop.example.test/products/landing_product/${ecommerce.serialNumber}`);
+  } finally {
+    if (origin === undefined) delete process.env.PUBLIC_SITE_ORIGIN;
+    else process.env.PUBLIC_SITE_ORIGIN = origin;
+  }
 });

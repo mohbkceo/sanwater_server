@@ -16,6 +16,9 @@ const pricing = require("../services/ecommerce/pricing.service");
 const catalog = require("../services/ecommerce/catalog.service");
 const imports = require("../services/ecommerce/import.service");
 const reports = require("../services/ecommerce/analytics.service");
+const tracking = require("../services/analytics/tracking");
+const storeSettings = require("../services/ecommerce/settings.service");
+const { logActivity } = require("../utils/logger");
 const handle = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res)).catch(next);
 const send = (res, data, status = 200) =>
@@ -70,17 +73,18 @@ router.get(
   "/products/:reference",
   quoteLimiter,
   handle(async (req, res) => {
+    const serial = { serialNumber: req.params.reference };
+    const reference = req.query.by === "serial"
+      ? serial
+      : { $or: [serial, { slug: req.params.reference }] };
     const p = await Product.findOne({
       isActive: true,
       "commerce.published": true,
       salesMode: { $in: ["ecommerce", "both"] },
-      $or: [
-        { serialNumber: req.params.reference },
-        { slug: req.params.reference },
-      ],
-    }).lean();
-    domain.assert(p, "Product unavailable", 404);
-    send(res, catalog.publicProduct(p));
+      ...reference,
+    }).populate("family subFamily", "name slug").lean();
+    domain.assert(p, "Product unavailable", 404, "PRODUCT_UNAVAILABLE");
+    send(res, catalog.publicProductDetails(p));
   }),
 );
 router.post(
@@ -98,31 +102,82 @@ router.post(
   publicSubmissionLimiter,
   handle(async (req, res) => {
     domain.assert(
-      process.env.ECOMMERCE_CHECKOUT_ENABLED === "true",
+      await storeSettings.checkoutEnabled(),
       "Checkout is temporarily unavailable",
       503,
       "CHECKOUT_DISABLED",
     );
     const input = validators.parse(validators.create, req.body);
+    // Acquisition comes from the signed analytics session cookie, never from
+    // the request body. Checkout works the same when it is unavailable.
+    const attribution = await tracking.resolveAttribution(req);
     send(
       res,
-      orders.receipt(await orders.create(input, req.get("Idempotency-Key"))),
+      orders.receipt(
+        await orders.create(input, req.get("Idempotency-Key"), undefined, {
+          attribution: attribution || undefined,
+        }),
+      ),
       201,
     );
   }),
 );
 router.use(authSanWater);
+async function presentSettings() {
+  const [settings, transactionsAvailable] = await Promise.all([
+    storeSettings.current(),
+    storeSettings.transactionsAvailable(),
+  ]);
+  const editor = settings.updatedBy
+    ? await User.findById(settings.updatedBy).select("_id fullName").lean()
+    : null;
+  return {
+    checkoutEnabled: settings.checkoutEnabled,
+    partialPaymentsEnabled: settings.partialPaymentsEnabled,
+    transactionsAvailable,
+    deliveryProviders: ["manual"],
+    sources: settings.sources,
+    revision: settings.revision,
+    updatedAt: settings.updatedAt,
+    updatedBy: editor ? { _id: editor._id, fullName: editor.fullName } : null,
+  };
+}
 router.get(
   "/settings",
   permission("view"),
+  handle(async (req, res) => send(res, await presentSettings())),
+);
+// Store switches are changed only by staff with ecommerce.settings (or a
+// super admin), use revision checks, and are recorded in the activity log.
+router.patch(
+  "/settings",
+  permission("settings"),
   handle(async (req, res) => {
-    const hello = await mongoose.connection.db.admin().command({ hello: 1 });
-    send(res, {
-      checkoutEnabled: process.env.ECOMMERCE_CHECKOUT_ENABLED === "true",
-      partialPaymentsEnabled: process.env.ECOMMERCE_PARTIAL_PAYMENTS === "true",
-      transactionsAvailable: Boolean(hello.setName || hello.msg === "isdbgrid"),
-      deliveryProviders: ["manual"],
-    });
+    const input = validators.parse(
+      Joi.object({
+        revision: Joi.number().integer().min(0).required(),
+        checkoutEnabled: Joi.boolean().strict(),
+        partialPaymentsEnabled: Joi.boolean().strict(),
+      }).or("checkoutEnabled", "partialPaymentsEnabled"),
+      req.body,
+    );
+    const { revision, ...changes } = input;
+    const result = await storeSettings.update(changes, revision, req.user);
+    const labels = { checkoutEnabled: "Checkout enabled", partialPaymentsEnabled: "Partial payments enabled" };
+    const changed = Object.entries(result.changes).filter(([, change]) => change.before !== change.after);
+    if (changed.length)
+      await logActivity(req, "UPDATE", "CommerceSettings", "store", {
+        summary: `Updated E-commerce settings: ${changed.map(([key, change]) => `${labels[key]} ${change.after ? "on" : "off"}`).join(", ")}`,
+        entity: { id: "store", name: "E-commerce settings" },
+        changedFields: changed.map(([key]) => key),
+        changes: changed.map(([key, change]) => ({
+          field: key,
+          label: labels[key],
+          before: change.before ? "Yes" : "No",
+          after: change.after ? "Yes" : "No",
+        })),
+      });
+    send(res, await presentSettings());
   }),
 );
 router.get(

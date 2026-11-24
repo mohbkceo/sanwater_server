@@ -28,6 +28,9 @@ const productFields = {
     serialNumber: JOI.string().optional(),
     isActive: JOI.boolean().optional(),
     isEcommerce: JOI.boolean().optional(),
+    // Explicit sales channel from the product editor. "both" stays a stored
+    // legacy value and is not selectable here.
+    salesMode: JOI.string().valid('catalog', 'ecommerce').optional(),
     tags: JOI.array().items(JOI.string()).max(20).optional(),
     gallery: JOI.array().items(JOI.string()).max(30).optional(),
     productVariants: JOI.array().items(JOI.object({

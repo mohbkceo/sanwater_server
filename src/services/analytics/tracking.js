@@ -51,6 +51,8 @@ function classifyChannel(touch) {
   if (/affiliate/.test(medium)) return 'Affiliate';
   if (/creator|influencer/.test(medium)) return 'Creator';
   if (/display|banner/.test(medium)) return 'Display';
+  if (/messag|whatsapp|sms/.test(medium) || /whatsapp|messenger|telegram|viber/.test(source) || /(^|\.)(whatsapp\.com|wa\.me)$/.test(host)) return 'Messaging';
+  if (/offline|print|qr/.test(medium) || /^qr(_|-)?code$/.test(source)) return 'Offline';
   if (/social/.test(medium) || /facebook|instagram|tiktok|linkedin|twitter|x.com|pinterest/.test(`${source} ${host}`)) return 'Organic Social';
   if (/organic/.test(medium) || /google|bing|yahoo|duckduckgo/.test(`${source} ${host}`)) return 'Organic Search';
   if (source && source !== 'direct') return 'Other';
@@ -106,6 +108,17 @@ function browserEvent(body, identity) {
   const subjectId = text(body.subject?.id, 80);
   if ((subjectType && !SUBJECT_TYPES.includes(subjectType)) || (subjectType && !subjectId)) return null;
   const properties = {};
+  if (name.startsWith('landing_')) {
+    const context = body.properties || {};
+    for (const key of ['productId', 'variantId']) {
+      if (typeof context[key] === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(context[key])) properties[key] = context[key];
+    }
+    if (Number.isSafeInteger(context.quantity) && context.quantity >= 1 && context.quantity <= 1000) properties.quantity = context.quantity;
+    if (['home', 'stopDesk'].includes(context.deliveryType)) properties.deliveryType = context.deliveryType;
+    if (typeof context.complete === 'boolean') properties.complete = context.complete;
+    if (['conflict', 'stock', 'stale', 'shippingError', 'phoneError', 'limited', 'disabled', 'uncertain', 'quoteError', 'invalid'].includes(context.errorCategory)) properties.errorCategory = context.errorCategory;
+    if (typeof context.category === 'string' && /^[a-z0-9][a-z0-9-]{0,79}$/.test(context.category)) properties.category = context.category;
+  }
   if (name === 'article_reading_progress' && Number.isFinite(body.progress)) properties.progress = Math.max(0, Math.min(100, Number(body.progress)));
   if (name === 'article_product_clicked' && /^[a-f\d]{24}$/i.test(String(body.relatedProductId || ''))) properties.relatedProductId = String(body.relatedProductId);
   return {
@@ -114,6 +127,39 @@ function browserEvent(body, identity) {
     origin: 'browser', attributionSnapshot: { firstTouch: identity.visitor.firstTouch, lastTouch: identity.visitor.lastTouch, lastNonDirectTouch: identity.visitor.lastNonDirectTouch },
     properties: { ...properties, path: normalizePath(body.path) }, occurredAt: new Date(),
   };
+}
+// Trusted acquisition context for a server-side conversion (an order), read
+// from the signed analytics cookies rather than from the request body. The
+// live session's touch wins when it is a campaign/referral visit; otherwise
+// the visitor's last non-direct touch applies (same rules as identify()).
+// Never throws: a missing secret, cookie or record yields null.
+async function resolveAttribution(req, now = new Date()) {
+  try {
+    const cookieVisitorId = unsign(req.cookies?.[VISITOR_COOKIE]);
+    const sessionId = unsign(req.cookies?.[SESSION_COOKIE]);
+    const session = sessionId
+      ? await AnalyticsSession.findOne({ sessionId, ...(cookieVisitorId ? { visitorId: cookieVisitorId } : {}) }).lean()
+      : null;
+    const visitorId = session?.visitorId || cookieVisitorId;
+    const visitor = visitorId ? await AnalyticsVisitor.findOne({ visitorId }).lean() : null;
+    const live = session && !session.endedAt && now - new Date(session.lastActivityAt) <= TIMEOUT_MS ? session : null;
+    let touch = null;
+    let model = null;
+    if (live?.acquisition && meaningfulTouch({ clickIds: {}, ...live.acquisition })) { touch = live.acquisition; model = 'session'; }
+    else if (visitor?.lastNonDirectTouch) { touch = visitor.lastNonDirectTouch; model = 'last_non_direct'; }
+    else if (live?.acquisition) { touch = live.acquisition; model = 'session'; }
+    if (!touch) return null;
+    const value = (v, max = 160) => text(v, max) || null;
+    return {
+      source: value(touch.source, 100), medium: value(touch.medium, 100), campaign: value(touch.campaign),
+      content: value(touch.content), term: value(touch.term), utmId: value(touch.utmId),
+      channel: value(touch.channel, 40) || classifyChannel({ clickIds: {}, ...touch }),
+      referrer: safeReferrer(touch.referrer), landingPage: model === 'session' ? value(live.landingPage, 500) : null,
+      model, sessionId: live?.sessionId || null, visitorId: visitorId || null,
+    };
+  } catch {
+    return null;
+  }
 }
 async function emitBusinessEvent(name, subjectType, subjectId, transitionId, properties = {}, identity = {}) {
   if (!BUSINESS_EVENTS.includes(name) || !SUBJECT_TYPES.includes(subjectType) || !subjectId || !transitionId) throw new Error('Invalid business event');
@@ -124,4 +170,4 @@ async function emitBusinessEvent(name, subjectType, subjectId, transitionId, pro
     properties, occurredAt: new Date(),
   } }, { upsert: true });
 }
-module.exports = { TIMEOUT_MS, VISITOR_COOKIE, SESSION_COOKIE, normalizePath, isAdminPath, classifyChannel, acquisitionFrom, meaningfulTouch, newExternalTouch, shouldStartNewSession, identify, browserEvent, emitBusinessEvent, unsign };
+module.exports = { TIMEOUT_MS, VISITOR_COOKIE, SESSION_COOKIE, normalizePath, isAdminPath, classifyChannel, acquisitionFrom, meaningfulTouch, newExternalTouch, shouldStartNewSession, identify, browserEvent, resolveAttribution, emitBusinessEvent, unsign, sign };

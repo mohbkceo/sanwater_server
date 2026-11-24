@@ -41,6 +41,26 @@ const item = new Schema(
   },
   { _id: false },
 );
+// Acquisition snapshot taken from the visitor's signed analytics session when
+// a public order is created. It outlives the session and is never edited.
+// Campaigns are not stored anywhere else: links carry UTM values only.
+const attribution = new Schema(
+  {
+    source: String,
+    medium: String,
+    campaign: String,
+    content: String,
+    term: String,
+    utmId: String,
+    channel: String,
+    referrer: String,
+    landingPage: String,
+    model: { type: String, enum: ["session", "last_non_direct"] },
+    sessionId: String,
+    visitorId: String,
+  },
+  { _id: false },
+);
 const schema = new Schema(
   {
     orderNumber: {
@@ -72,6 +92,7 @@ const schema = new Schema(
       required: true,
     },
     campaign: String,
+    attribution: { type: attribution, default: undefined, immutable: true },
     externalReference: String,
     sourceRecord: { type: String, unique: true, sparse: true, immutable: true },
     items: [item],

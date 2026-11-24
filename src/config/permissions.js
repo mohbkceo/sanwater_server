@@ -4,7 +4,7 @@ const PERMISSIONS = {
     CONFIRM: 'ecommerce.confirm', CANCEL: 'ecommerce.cancel', FULFILL: 'ecommerce.fulfill', SHIP: 'ecommerce.ship',
     ASSIGN: 'ecommerce.assign', ISSUE: 'ecommerce.issue', RESOLVE: 'ecommerce.resolve', PAYMENT: 'ecommerce.payment',
     INVENTORY: 'ecommerce.inventory', IMPORT: 'ecommerce.import', CUSTOMERS: 'ecommerce.customers',
-    REPORTS: 'ecommerce.reports', OVERRIDE_PRICE: 'ecommerce.overridePrice',
+    REPORTS: 'ecommerce.reports', OVERRIDE_PRICE: 'ecommerce.overridePrice', SETTINGS: 'ecommerce.settings',
   },
   ANALYTICS: {
     VIEW: 'analytics.view',

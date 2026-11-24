@@ -90,6 +90,8 @@ function summarize(orders) {
       Math.max(0, o.financials.total - received(o)),
     ),
     bySource: group((o) => o.source),
+    byChannel: group((o) => o.attribution?.channel),
+    byCampaign: group((o) => o.attribution?.campaign || o.campaign),
     byWilaya: group((o) => o.delivery.wilayaName),
     byProduct: [...products.values()],
     definitions: {
@@ -105,7 +107,7 @@ async function report(query, user) {
   return summarize(
     await Order.find(filters(query, user))
       .select(
-        "commercialStatus confirmation.confirmedAt financials payment items source delivery.wilayaName createdAt",
+        "commercialStatus confirmation.confirmedAt financials payment items source campaign attribution.channel attribution.campaign delivery.wilayaName createdAt",
       )
       .lean(),
   );

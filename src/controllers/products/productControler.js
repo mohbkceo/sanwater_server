@@ -10,6 +10,12 @@ const { buildEntityDetails, diff } = require("../../utils/audit");
 const { emitBusinessEvent } = require('../../services/analytics/tracking');
 const catalog = require('../../services/products/catalog');
 const {
+  catalogOnlyFilter,
+  commerceEnabledFilter,
+  publicCatalogClauses,
+  publicCatalogFilter,
+} = require('../../services/products/visibility');
+const {
   resolveCatalogFilter,
   resolveSubFamilyAssignment,
 } = require("../../services/taxonomy.service");
@@ -98,7 +104,7 @@ async function createProduct(req, res) {
       relatedProducts,
       status,
       seo,
-      ...Object.fromEntries(['variantSchemaVersion', 'variantOptions', 'variantsV2'].filter(key => req.body[key] !== undefined).map(key => [key, req.body[key]])),
+      ...Object.fromEntries(['salesMode', 'variantSchemaVersion', 'variantOptions', 'variantsV2'].filter(key => req.body[key] !== undefined).map(key => [key, req.body[key]])),
     }));
 
     await product.save();
@@ -155,20 +161,18 @@ async function getProducts(req, res) {
     }
 
     if (!isAdmin) {
-      query.isActive = true;
-      query.$and = [{ $or: [{ commerce: { $exists: false } }, { commerce: null }, { 'commerce.published': true }] }];
-      // Public catalog = anything not explicitly flagged e-commerce-only.
-      // `isEcommerce` defaults to `false` on the schema, so nearly every
-      // real product has it stored as `false`, not missing/null — querying
-      // for strictly `null` here was excluding the entire live catalog
-      // (confirmed: 210/211 products have isEcommerce:false, 0 have null).
-      query.isEcommerce = { $in: [false, null] };
+      // Normal public catalog: active, published, and never an E-commerce
+      // product (salesMode ecommerce/both or legacy isEcommerce). Those are
+      // reachable only through their dedicated landing page.
+      query.$and = publicCatalogClauses();
     }
 
-    if (isEcommerce === "true") {
-      query.isEcommerce = true;
-    } else if (isEcommerce === "false") {
-      query.isEcommerce = { $in: [false, null] };
+    // Sales-channel scope is an admin filter only, so a public request cannot
+    // use it to list E-commerce products.
+    if (isAdmin && isEcommerce === "true") {
+      query.$and = [...(query.$and || []), commerceEnabledFilter()];
+    } else if (isAdmin && isEcommerce === "false") {
+      query.$and = [...(query.$and || []), catalogOnlyFilter()];
     }
     if (lastId && mongoose.isValidObjectId(lastId)) {
       query._id = { $lt: new mongoose.Types.ObjectId(lastId) };
@@ -269,13 +273,18 @@ async function getProduct(req, res) {
     };
     if (!req.catalogAdmin) {
       Object.assign(productQuery, await resolveCatalogFilter({ publicOnly: true }));
-      productQuery.isActive = true;
-      productQuery.$and = [{ $or: [{ commerce: { $exists: false } }, { commerce: null }, { 'commerce.published': true }] }];
+      // The public detail page follows the catalog policy: E-commerce
+      // products answer 404 here and stay reachable on their landing page.
+      productQuery.$and = publicCatalogClauses();
     }
     const product = await Product.findOne(productQuery)
       .populate('family', 'name slug isActive')
       .populate('subFamily', 'name slug family isActive')
-      .populate("relatedProducts", "name slug productId gallery shortDescription");
+      .populate({
+        path: "relatedProducts",
+        select: "name slug productId gallery shortDescription",
+        ...(req.catalogAdmin ? {} : { match: publicCatalogFilter() }),
+      });
 
     if (!product) {
       throw new CostumeExption(
@@ -351,7 +360,7 @@ async function updateProduct(req, res) {
       throw new CostumeExption(ERRORS.NOT_FOUND.msg, ERRORS.NOT_FOUND.statusCode, ERRORS.NOT_FOUND.key, { message: `product_not_found` });
     }
     Object.assign(updateData, await catalogAssignment(req.body));
-    for (const key of ['catalogRevision', 'variantSchemaVersion', 'variantOptions', 'variantsV2']) if (req.body[key] !== undefined) updateData[key] = req.body[key];
+    for (const key of ['catalogRevision', 'salesMode', 'variantSchemaVersion', 'variantOptions', 'variantsV2']) if (req.body[key] !== undefined) updateData[key] = req.body[key];
     const product = await catalog.update(serialNumber, updateData, before);
 
     if (!product) {

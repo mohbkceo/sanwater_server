@@ -5,6 +5,7 @@ const CostumeExption = require('../../utils/CostumeException');
 const { logUpdateActivity } = require('../../utils/logger');
 const { emitBusinessEvent } = require('../../services/analytics/tracking');
 const { quote } = require('../../services/shipping.service');
+const storeSettings = require('../../services/ecommerce/settings.service');
 
 // Public: a customer (consumer, contractor, dealer, ...) requests a quote
 // for one or more products. No auth required — this is the storefront
@@ -14,7 +15,7 @@ const { quote } = require('../../services/shipping.service');
 const createQuotation = async (req, res, next) => {
     try {
         const { items, requester, source, delivery } = req.body;
-        if (delivery && process.env.ECOMMERCE_CHECKOUT_ENABLED === 'true') {
+        if (delivery && await storeSettings.checkoutEnabled()) {
             res.set('Deprecation', 'true');
             res.set('Link', '</ecommerce/checkout>; rel="successor-version"');
             throw new CostumeExption('Please reopen the product checkout to select a sellable variant and review the current total.', 409, 'CHECKOUT_UPGRADE_REQUIRED');

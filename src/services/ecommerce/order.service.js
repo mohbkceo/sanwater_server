@@ -6,6 +6,7 @@ const { Counter } = require("../../models/commerceSupport.model");
 const transaction = require("./transaction");
 const pricing = require("./pricing.service");
 const inventory = require("./inventory.service");
+const storeSettings = require("./settings.service");
 const {
   assert,
   hash,
@@ -160,7 +161,10 @@ async function create(input, key, user, context = {}) {
         items: calculated.items,
         delivery: calculated.delivery,
         financials: calculated.financials,
-        campaign: input.campaign,
+        // `campaign` keeps its existing meaning; a landing order without one
+        // takes the campaign from its trusted attribution snapshot.
+        campaign: input.campaign || context.attribution?.campaign || undefined,
+        attribution: context.attribution || undefined,
         externalReference: context.externalReference,
         sourceRecord: context.sourceRecord,
         originalData: context.originalData,
@@ -427,7 +431,7 @@ async function act(id, input, user) {
           "Payment exceeds balance",
         );
         assert(
-          process.env.ECOMMERCE_PARTIAL_PAYMENTS === "true" ||
+          (await storeSettings.partialPaymentsEnabled()) ||
             round(received - order.payment.refunded + input.amount) ===
               order.financials.total,
           "Partial payments are disabled",
@@ -503,6 +507,11 @@ async function act(id, input, user) {
 function present(order, user) {
   const { idempotencyKey, requestHash, operations, originalData, ...safe } =
     order;
+  // Analytics identifiers stay server-side; staff see the acquisition only.
+  if (safe.attribution) {
+    const { sessionId, visitorId, ...acquisition } = safe.attribution;
+    safe.attribution = acquisition;
+  }
   safe.availableActions = targets(order, user);
   safe.availableOperations = Object.entries(actionPermissions)
     .filter(([action, permission]) => {
@@ -566,6 +575,14 @@ function filters(query, user) {
   if (query.assignment) {
     assert(mongoose.isValidObjectId(query.assignment), "Invalid assignment");
     clauses.push({ assignment: query.assignment });
+  }
+  const exact = (value) => String(value).trim().slice(0, 160);
+  if (query.acquisitionSource)
+    clauses.push({ "attribution.source": exact(query.acquisitionSource) });
+  if (query.channel) clauses.push({ "attribution.channel": exact(query.channel) });
+  if (query.campaign) {
+    const campaign = exact(query.campaign);
+    clauses.push({ $or: [{ "attribution.campaign": campaign }, { campaign }] });
   }
   if (query.important === "true") clauses.push({ important: true });
   if (query.issues === "true")

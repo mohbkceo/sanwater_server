@@ -6,7 +6,9 @@ function adaptLegacy(body) {
   const name = LEGACY_BROWSER_EVENTS[body?.type] || body?.name;
   const meta = body?.meta || {};
   const subject = body?.subject || (meta.product_id ? { type: 'product', id: meta.product_id } : meta.article_id ? { type: 'article', id: meta.article_id } : null);
-  return { name, subject, path: body?.path || meta.page, progress: body?.progress ?? meta.progress, relatedProductId: body?.relatedProductId, acquisition: body?.acquisition || {
+  // `properties` is copied as received; browserEvent() keeps only the
+  // allowlisted, non-personal fields for each event name.
+  return { name, subject, path: body?.path || meta.page, progress: body?.progress ?? meta.progress, relatedProductId: body?.relatedProductId, properties: body?.properties && typeof body.properties === 'object' && !Array.isArray(body.properties) ? body.properties : undefined, acquisition: body?.acquisition || {
     source: body?.source, medium: body?.medium, campaign: body?.campaign, referrer: body?.referrer,
   }, device: body?.device && typeof body.device === 'string' ? { type: body.device, language: body.language } : body?.device };
 }

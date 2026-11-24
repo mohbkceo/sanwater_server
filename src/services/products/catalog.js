@@ -15,6 +15,11 @@ function prepare(input, previous = {}) {
   const before = plain(previous);
   const data = { ...input };
   delete data.catalogRevision;
+  // The product editor and bulk actions state the sales channel explicitly
+  // ("catalog" or "ecommerce"). The legacy flag follows it so the two fields
+  // cannot disagree on records saved from now on.
+  if (input.salesMode !== undefined)
+    data.isEcommerce = input.salesMode === "ecommerce";
   if (input.prices) data.prices = { ...before.prices, ...input.prices };
   if (
     input.gallery &&
@@ -114,11 +119,16 @@ function prepare(input, previous = {}) {
       data.commerce.published =
         merged.status === "published" && merged.isActive === true;
       data.commerce.revision = (before.commerce?.revision || 0) + 1;
-      data.salesMode = merged.isEcommerce
-        ? "ecommerce"
-        : ["ecommerce", "both"].includes(before.salesMode)
-          ? "both"
-          : "catalog";
+      // Without an explicit channel (older clients), keep the previous
+      // inference: clearing the flag on a former E-commerce product kept it
+      // sellable as "both".
+      data.salesMode =
+        input.salesMode ||
+        (merged.isEcommerce
+          ? "ecommerce"
+          : ["ecommerce", "both"].includes(before.salesMode)
+            ? "both"
+            : "catalog");
     } else if (merged.isEcommerce) {
       const id = `base-${merged.serialNumber || before.serialNumber}`;
       data.commerce = {

@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const News = require('../../models/news.model');
 const NewsRevision = require('../../models/newsRevision.model');
 const Product = require('../../models/product.model');
+const { publicCatalogFilter } = require('../../services/products/visibility');
 const User = require('../../models/user.model');
 const Event = require('../../models/event.model');
 const returnResponse = require('../../utils/responseHandler');
@@ -55,7 +56,7 @@ async function withInlineProducts(article, publicOnly = false) {
   const ids = [...new Set([...String(raw.content || '').matchAll(/data-content-type="product"\s+data-payload="([^"]+)"/g)].map((match) => {
     try { return JSON.parse(decodeURIComponent(match[1])).id; } catch { return ''; }
   }).filter((id) => typeof id === 'string' && /^[a-f\d]{24}$/i.test(id)))];
-  const inlineProducts = ids.length ? await Product.find({ _id: { $in: ids }, ...(publicOnly ? { isActive: true, isEcommerce: { $in: [false, null] } } : {}) }).select('name serialNumber slug gallery shortDescription').lean() : [];
+  const inlineProducts = ids.length ? await Product.find({ _id: { $in: ids }, ...(publicOnly ? publicCatalogFilter() : {}) }).select('name serialNumber slug gallery shortDescription').lean() : [];
   return { ...raw, inlineProducts };
 }
 

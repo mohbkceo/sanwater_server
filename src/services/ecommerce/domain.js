@@ -1,5 +1,6 @@
 const { createHash, randomUUID } = require("node:crypto");
 const ErrorResponse = require("../../utils/CostumeException");
+const MAX_LINE_QUANTITY = 1000;
 const fail = (message, status = 422, key = "ECOMMERCE_INVALID") => {
   throw new ErrorResponse(message, status, key);
 };
@@ -218,15 +219,17 @@ function priceItem(product, item, now = new Date()) {
       product.commerce?.published &&
       ["ecommerce", "both"].includes(product.salesMode),
     "Product is not available for sale",
+    422,
+    "PRODUCT_UNAVAILABLE",
   );
   const variant = product.commerce.variants.find(
     (v) => v.id === item.variantId,
   );
-  assert(variant?.enabled, "Select an enabled variant");
+  assert(variant?.enabled, "Select an enabled variant", 422, "VARIANT_UNAVAILABLE");
   assert(
     Number.isInteger(item.quantity) &&
       item.quantity >= 1 &&
-      item.quantity <= 1000,
+      item.quantity <= MAX_LINE_QUANTITY,
     "Invalid quantity",
   );
   assert(
@@ -273,6 +276,7 @@ function priceItem(product, item, now = new Date()) {
   };
 }
 module.exports = {
+  MAX_LINE_QUANTITY,
   assert,
   fail,
   hash,

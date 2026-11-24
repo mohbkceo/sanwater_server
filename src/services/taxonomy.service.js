@@ -4,6 +4,7 @@ const SubFamily = require('../models/subFamily.model');
 const Product = require('../models/product.model');
 const CostumeException = require('../utils/CostumeException');
 const { ERRORS } = require('../config/messages');
+const { publicCatalogFilter } = require('./products/visibility');
 
 function invalidTaxonomy(message) {
   return new CostumeException(ERRORS.INVALID.msg, ERRORS.INVALID.statusCode, ERRORS.INVALID.key, { message });
@@ -112,9 +113,11 @@ async function getFamilyTree({ admin = false, slug } = {}) {
     ...(admin ? {} : { isActive: true }),
   }).sort({ order: 1, name: 1 }).lean();
 
+  // Public counts follow the public catalog policy, so E-commerce products
+  // (landing-page only) are never counted in family navigation.
+  const publicMatch = admin ? {} : publicCatalogFilter();
   const visibleProductMatch = admin ? {} : {
-    isActive: true,
-    isEcommerce: { $in: [false, null] },
+    ...publicMatch,
     subFamily: { $in: subFamilies.map((entry) => entry._id) },
   };
   const [familyCounts, subFamilyCounts] = await Promise.all([
@@ -123,7 +126,7 @@ async function getFamilyTree({ admin = false, slug } = {}) {
       { $group: { _id: '$family', count: { $sum: 1 } } },
     ]),
     Product.aggregate([
-      { $match: { subFamily: { $in: subFamilies.map((entry) => entry._id) }, ...(admin ? {} : { isActive: true, isEcommerce: { $in: [false, null] } }) } },
+      { $match: { subFamily: { $in: subFamilies.map((entry) => entry._id) }, ...publicMatch } },
       { $group: { _id: '$subFamily', count: { $sum: 1 } } },
     ]),
   ]);

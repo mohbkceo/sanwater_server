@@ -1,4 +1,5 @@
 const Joi = require("joi");
+const { MAX_LINE_QUANTITY } = require("../../../services/ecommerce/domain");
 const id = Joi.string().hex().length(24);
 const text = (max = 150) => Joi.string().trim().max(max);
 const money = Joi.number().min(0).max(1e10).precision(2);
@@ -60,7 +61,7 @@ const product = Joi.object({
 const item = Joi.object({
   productId: id.required(),
   variantId: text(100).required(),
-  quantity: Joi.number().integer().min(1).max(1000).required(),
+  quantity: Joi.number().integer().min(1).max(MAX_LINE_QUANTITY).required(),
   overrideUnitPrice: money,
   overrideReason: text(1000).when("overrideUnitPrice", {
     is: Joi.exist(),
